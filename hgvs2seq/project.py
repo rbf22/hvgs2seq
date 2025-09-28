@@ -68,3 +68,35 @@ def project_variant(
         raise ValueError(
             f"Failed to project variant {variant} to {target_ac} due to a mapping error: {e}"
         )
+
+
+def project_c_to_g(
+    variant_c: hgvs.sequencevariant.SequenceVariant,
+) -> hgvs.sequencevariant.SequenceVariant:
+    """
+    Projects a cDNA (c.) variant to genomic (g.) coordinates.
+
+    This function requires that the input variant is in c. coordinates and
+    is associated with a transcript that can be found by the data provider.
+
+    :param variant_c: An hgvs SequenceVariant object in c. coordinates.
+    :return: A new SequenceVariant object in g. coordinates.
+    :raises ValueError: If the variant cannot be projected.
+    """
+    if variant_c.type != "c":
+        raise ValueError(f"Input variant must be of type 'c' for c_to_g projection, but got '{variant_c.type}'.")
+
+    try:
+        # The mapper uses the transcript information from the variant's accession (e.g., NM_...)
+        # to determine the correct genomic context.
+        var_g = mapper.c_to_g(variant_c)
+        return var_g
+    except HGVSDataNotAvailableError as e:
+        raise ValueError(
+            f"Could not project variant {variant_c} to genomic coordinates. "
+            f"Data not available from the data provider: {e}"
+        )
+    except HGVSError as e:
+        raise ValueError(
+            f"Failed to project variant {variant_c} to genomic coordinates due to a mapping error: {e}"
+        )
