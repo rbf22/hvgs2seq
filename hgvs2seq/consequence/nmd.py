@@ -3,13 +3,15 @@ from typing import Dict, Any, Optional
 from ..config import TranscriptConfig
 from .cds import extract_cds, translate
 
-# The distance from a PTC to the final exon-exon junction that typically triggers NMD.
-NMD_THRESHOLD = 50
+# The default distance from a PTC to the final exon-exon junction that typically triggers NMD.
+NMD_THRESHOLD_DEFAULT = 50
 
 def check_nmd(
     edited_cdna: str,
     protein_ref: Optional[str],
     config: TranscriptConfig,
+    *,
+    nmd_threshold: int = NMD_THRESHOLD_DEFAULT,
 ) -> Dict[str, Any]:
     """
     Applies a standard set of rules to determine if a transcript with a
@@ -84,10 +86,10 @@ def check_nmd(
     # Main NMD rule: Check distance from PTC to the last junction.
     distance = last_junction_pos_c - ptc_cdna_pos_1based
 
-    if distance >= NMD_THRESHOLD:
+    if distance >= nmd_threshold:
         return {
             "result": "NMD_likely",
-            "reason": f"PTC is {distance} nt upstream of the final exon-exon junction (>= {NMD_THRESHOLD} nt).",
+            "reason": f"PTC is {distance} nt upstream of the final exon-exon junction (>= {nmd_threshold} nt).",
             "ptc_position": ptc_cdna_pos_1based,
             "last_junction_position": last_junction_pos_c,
             "distance": distance,
@@ -95,7 +97,7 @@ def check_nmd(
     else:
         return {
             "result": "NMD_escaped",
-            "reason": f"PTC is {distance} nt upstream of the final exon-exon junction (< {NMD_THRESHOLD} nt).",
+            "reason": f"PTC is {distance} nt upstream of the final exon-exon junction (< {nmd_threshold} nt).",
             "ptc_position": ptc_cdna_pos_1based,
             "last_junction_position": last_junction_pos_c,
             "distance": distance,
