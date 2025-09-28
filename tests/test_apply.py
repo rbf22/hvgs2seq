@@ -1,117 +1,71 @@
 import pytest
-from hgvs2seq.parse import VariantNorm
-from hgvs2seq.models import EditPlan
+from hgvs2seq.models import VariantNorm
 from hgvs2seq.apply.single import apply_single_variant
-from hgvs2seq.apply.batch import apply_edit_plan
+from hgvs2seq.apply.batch import apply_variants_in_batch
 
-# A sample reference sequence for testing: ATG GCC TCA TGA TAG CAT CAT CAT CAT C
-REF_SEQ = "ATGGCCTCATGATAGCATCATCATCATC"
+# A simple reference sequence for testing
+# 0-based: 0A 1T 2G 3C 4A 5A 6C 7G 8T 9G 10C 11A 12T
+# c. pos:  1A 2T 3G 4C 5A 6A 7C 8G 9T 10G 11C 12A 13T
+REF_SEQ = "ATGCAACGTGCAT"
 
-@pytest.fixture
-def ref_seq() -> str:
-    """Provides the reference sequence for tests."""
-    return REF_SEQ
-
-# =============================================================================
-# Tests for apply_single_variant
-# =============================================================================
-
-def test_apply_sub(ref_seq: str):
-    """Test a single nucleotide substitution."""
-    # c.4G>T changes the sequence from ATGGCCT... to ATGTCCT...
-    variant = VariantNorm(hgvs_c="c.4G>T", kind="sub", c_start=4, c_end=4, alt="T", meta={})
-    expected_seq = "ATGTCCTCATGATAGCATCATCATCATC"
-    result_seq = apply_single_variant(ref_seq, variant)
+def test_apply_substitution():
+    variant = VariantNorm(hgvs_c="c.4C>G", kind="sub", c_start=4, c_end=4, alt="G")
+    expected_seq = "ATGGAACGTGCAT"
+    result_seq = apply_single_variant(REF_SEQ, variant)
     assert result_seq == expected_seq
 
-def test_apply_del(ref_seq: str):
-    """Test a deletion of a few bases."""
-    # c.4_6del removes GCC from ATG-GCC-TCA... to become ATG-TCA...
-    variant = VariantNorm(hgvs_c="c.4_6del", kind="del", c_start=4, c_end=6, alt=None, meta={})
-    expected_seq = "ATGTCATGATAGCATCATCATCATC"
-    result_seq = apply_single_variant(ref_seq, variant)
+def test_apply_deletion():
+    variant = VariantNorm(hgvs_c="c.5_6del", kind="del", c_start=5, c_end=6, alt="")
+    expected_seq = "ATGCCGTGCAT"
+    result_seq = apply_single_variant(REF_SEQ, variant)
     assert result_seq == expected_seq
 
-def test_apply_ins(ref_seq: str):
-    """Test a simple insertion."""
-    # c.6_7insA inserts 'A' between base 6 (C) and 7 (T)
-    # ATG-GCC-TCA... becomes ATG-GCC-A-TCA...
-    variant = VariantNorm(hgvs_c="c.6_7insA", kind="ins", c_start=6, c_end=7, alt="A", meta={})
-    expected_seq = "ATGGCCATCATGATAGCATCATCATCATC"
-    result_seq = apply_single_variant(ref_seq, variant)
+def test_apply_insertion():
+    variant = VariantNorm(hgvs_c="c.5_6insTT", kind="ins", c_start=5, c_end=6, alt="TT")
+    expected_seq = "ATGCATTACGTGCAT"
+    result_seq = apply_single_variant(REF_SEQ, variant)
     assert result_seq == expected_seq
 
-def test_apply_delins(ref_seq: str):
-    """Test a deletion followed by an insertion."""
-    # c.4_6delinsTT removes GCC and inserts TT
-    # ATG-GCC-TCA... becomes ATG-TT-TCA...
-    variant = VariantNorm(hgvs_c="c.4_6delinsTT", kind="delins", c_start=4, c_end=6, alt="TT", meta={})
-    expected_seq = "ATGTTTCATGATAGCATCATCATCATC"
-    result_seq = apply_single_variant(ref_seq, variant)
+def test_apply_duplication():
+    variant = VariantNorm(hgvs_c="c.7_9dup", kind="dup", c_start=7, c_end=9, alt="")
+    # Region c.7_9 is CGT. Result should be ATGCAA + CGT + CGT + GCAT
+    expected_seq = "ATGCAACGTCGTGCAT"
+    result_seq = apply_single_variant(REF_SEQ, variant)
     assert result_seq == expected_seq
 
-def test_apply_mnv(ref_seq: str):
-    """Test a multi-nucleotide variant (a delins of the same length)."""
-    # c.4_6delinsTTA removes GCC and inserts TTA
-    # ATG-GCC-TCA... becomes ATG-TTA-TCA...
-    variant = VariantNorm(hgvs_c="c.4_6delinsTTA", kind="mnv", c_start=4, c_end=6, alt="TTA", meta={})
-    expected_seq = "ATGTTATCATGATAGCATCATCATCATC"
-    result_seq = apply_single_variant(ref_seq, variant)
+def test_apply_inversion():
+    variant = VariantNorm(hgvs_c="c.2_4inv", kind="inv", c_start=2, c_end=4, alt="")
+    # Region c.2_4 is TGC. rev-comp is GCA. Result should be A + GCA + ACGTGCAT
+    expected_seq = "AGCAACGTGCAT"
+    result_seq = apply_single_variant(REF_SEQ, variant)
     assert result_seq == expected_seq
 
-def test_apply_dup(ref_seq: str):
-    """Test a duplication."""
-    # c.4_6dup duplicates GCC
-    # ATG-GCC-TCA... becomes ATG-GCC-GCC-TCA...
-    variant = VariantNorm(hgvs_c="c.4_6dup", kind="dup", c_start=4, c_end=6, alt=None, meta={})
-    expected_seq = "ATGGCCGCCTCATGATAGCATCATCATCATC"
-    result_seq = apply_single_variant(ref_seq, variant)
-    assert result_seq == expected_seq
-
-# =============================================================================
-# Tests for apply_edit_plan (Updated from apply_batch)
-# =============================================================================
-
-def test_apply_edit_plan_non_overlapping(ref_seq: str):
-    """Test applying a batch of non-overlapping variants using an EditPlan."""
+def test_apply_batch_order():
     variants = [
-        VariantNorm(hgvs_c="c.4_6del", kind="del", c_start=4, c_end=6, alt=None, meta={}),
-        VariantNorm(hgvs_c="c.10_11insA", kind="ins", c_start=10, c_end=11, alt="A", meta={})
+        VariantNorm(hgvs_c="c.4C>G", kind="sub", c_start=4, c_end=4, alt="G"),
+        VariantNorm(hgvs_c="c.9T>A", kind="sub", c_start=9, c_end=9, alt="A"),
     ]
-    plan = EditPlan(haplotypes=[variants], policy="order_by_pos", warnings=[])
+    expected_seq = "ATGGAACGAGCAT"
+    result = apply_variants_in_batch(REF_SEQ, variants)
+    assert result[0] == expected_seq
 
-    # The function applies variants in reverse order of start position.
-    # 1. Apply c.10_11insA: ATGGCCTCAT -> ATGGCCTCATA...
-    #    Result: "ATGGCCTCATAGATAGCATCATCATCATC"
-    # 2. Apply c.4_6del to the new sequence: ATG-GCC-TCA... -> ATG-TCA...
-    #    Result: "ATGTCATAGATAGCATCATCATCATC"
-    expected_seq = "ATGTCATAGATAGCATCATCATCATC"
-
-    result_seqs = apply_edit_plan(ref_seq, plan)
-    assert len(result_seqs) == 1
-    assert result_seqs[0] == expected_seq
-
-def test_apply_edit_plan_order_independence(ref_seq: str):
-    """Test that the order of variants in the input list doesn't matter for EditPlan."""
-    variants_shuffled = [
-        VariantNorm(hgvs_c="c.10_11insA", kind="ins", c_start=10, c_end=11, alt="A", meta={}),
-        VariantNorm(hgvs_c="c.4_6del", kind="del", c_start=4, c_end=6, alt=None, meta={})
+def test_apply_batch_phasing():
+    variants = [
+        VariantNorm(hgvs_c="c.2T>A", kind="sub", c_start=2, c_end=2, alt="A", phase_group=1),
+        VariantNorm(hgvs_c="c.10G>T", kind="sub", c_start=10, c_end=10, alt="T", phase_group=1),
+        VariantNorm(hgvs_c="c.4C>G", kind="sub", c_start=4, c_end=4, alt="G", phase_group=2),
+        VariantNorm(hgvs_c="c.9T>A", kind="sub", c_start=9, c_end=9, alt="A", phase_group=2),
+        VariantNorm(hgvs_c="c.12A>C", kind="sub", c_start=12, c_end=12, alt="C"),
     ]
-    plan = EditPlan(haplotypes=[variants_shuffled], policy="order_by_pos", warnings=[])
-    expected_seq = "ATGTCATAGATAGCATCATCATCATC"
+    expected_hap1 = "AAGCAACGTTCAT"
+    expected_hap2 = "ATGGAACGAGCAT"
+    expected_hap0 = "ATGCAACGTGCCT"
+    result = apply_variants_in_batch(REF_SEQ, variants)
+    assert result[0] == expected_hap0
+    assert result[1] == expected_hap1
+    assert result[2] == expected_hap2
 
-    result_seqs = apply_edit_plan(ref_seq, plan)
-    assert len(result_seqs) == 1
-    assert result_seqs[0] == expected_seq
-
-def test_out_of_bounds_error(ref_seq: str):
-    """Test that a variant outside the sequence bounds raises an error."""
-    variant = VariantNorm(hgvs_c="c.100G>A", kind="sub", c_start=100, c_end=100, alt="A", meta={})
-    with pytest.raises(ValueError, match="out of bounds"):
-        apply_single_variant(ref_seq, variant)
-
-def test_unsupported_kind_error(ref_seq: str):
-    """Test that an unsupported variant kind raises an error."""
-    variant = VariantNorm(hgvs_c="c.1_2inv", kind="inv", c_start=1, c_end=2, alt=None, meta={})
-    with pytest.raises(ValueError, match="Unsupported variant kind"):
-        apply_single_variant(ref_seq, variant)
+def test_invalid_coordinates():
+    variant = VariantNorm(hgvs_c="c.20G>T", kind="sub", c_start=20, c_end=20, alt="T")
+    with pytest.raises(ValueError, match="outside the bounds"):
+        apply_single_variant(REF_SEQ, variant)

@@ -1,72 +1,73 @@
-from typing import List, cast
+"""
+Applies a batch of variants to a reference sequence, handling phasing and ordering.
+"""
 import logging
-
-from ..models import EditPlan
-from ..parse import VariantNorm
+from typing import List, Dict
+from collections import defaultdict
+from ..models import VariantNorm
 from .single import apply_single_variant
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
-def _detect_overlap(v1: VariantNorm, v2: VariantNorm) -> bool:
+def apply_variants_in_batch(
+    ref_seq: str,
+    variants: List[VariantNorm],
+    policy: str = "order_by_pos"
+) -> Dict[int, str]:
     """
-    Checks if two variants, v1 and v2, have overlapping cDNA coordinates.
-    Assumes variants are sorted by start position, so v1.c_start <= v2.c_start.
-    """
-    return v1.c_end >= v2.c_start
-
-def apply_edit_plan(ref_seq: str, plan: EditPlan) -> List[str]:
-    """
-    Applies a batch of variants to a reference sequence according to an EditPlan.
-    This function handles multiple haplotypes and variant application policies.
+    Applies a batch of normalized variants to a reference sequence,
+    handling phasing into separate haplotypes.
 
     Args:
         ref_seq: The reference cDNA sequence.
-        plan: The EditPlan containing variants grouped by haplotype and the policy.
+        variants: A list of VariantNorm objects to apply.
+        policy: The policy for handling multiple variants. Currently, only
+                "order_by_pos" (applying in reverse order) is implemented.
 
     Returns:
-        A list of edited cDNA sequences, one for each haplotype.
+        A dictionary mapping a haplotype ID to its edited sequence.
+        Unphased variants are grouped into haplotype 0.
     """
-    edited_sequences = []
+    if policy != "order_by_pos":
+        _logger.warning(f"Policy '{policy}' is not fully supported. "
+                        "Defaulting to 'order_by_pos' behavior.")
 
-    for i, haplotype_variants in enumerate(plan.haplotypes):
-        logger.info(f"Processing haplotype {i+1} with {len(haplotype_variants)} variants.")
+    # 1. Group variants by phase_group (haplotype)
+    haplotypes = defaultdict(list)
+    for var in variants:
+        # Treat unphased variants (phase_group=None) as a single haplotype (group 0)
+        phase_group = var.phase_group if var.phase_group is not None else 0
+        haplotypes[phase_group].append(var)
 
-        # Sort variants by start position. For deletions, reverse order is safer.
-        # For now, we will sort ascending for overlap detection and then reverse for application.
-        sorted_variants = sorted(haplotype_variants, key=lambda v: v.c_start)
+    _logger.info(f"Applying variants across {len(haplotypes)} haplotype(s).")
 
-        if plan.policy == "reject_overlaps":
-            for j in range(len(sorted_variants) - 1):
-                v1 = sorted_variants[j]
-                v2 = sorted_variants[j+1]
-                if _detect_overlap(v1, v2):
-                    overlap_msg = (
-                        f"Overlapping variants detected in haplotype {i+1}: "
-                        f"{v1.hgvs_c} (ends at {v1.c_end}) and {v2.hgvs_c} (starts at {v2.c_start}). "
-                        "Rejecting this haplotype."
-                    )
-                    plan.warnings.append(overlap_msg)
-                    logger.warning(overlap_msg)
-                    # For a strict rejection policy, we might add a placeholder or raise an error.
-                    # Here, we'll just return an empty sequence for the failed haplotype.
-                    edited_sequences.append("")
-                    continue
+    edited_sequences = {}
 
-        # Apply variants in reverse order of start position to handle coordinate shifts correctly.
-        variants_to_apply = sorted(haplotype_variants, key=lambda v: v.c_start, reverse=True)
+    # 2. For each haplotype, apply its variants to a fresh copy of the ref_seq
+    for phase_id, hap_variants in haplotypes.items():
+        _logger.info(f"Processing haplotype {phase_id} with {len(hap_variants)} variants.")
 
-        edited_seq = ref_seq
-        for variant in variants_to_apply:
+        current_seq = ref_seq
+
+        # 3. Sort variants in reverse order of position. This is critical to
+        # prevent earlier edits from invalidating the coordinates of later edits.
+        sorted_variants = sorted(
+            hap_variants,
+            key=lambda v: (v.c_start, v.c_end),
+            reverse=True
+        )
+
+        # 4. Apply the sorted variants sequentially
+        for variant in sorted_variants:
             try:
-                edited_seq = apply_single_variant(edited_seq, variant)
+                current_seq = apply_single_variant(current_seq, variant)
             except ValueError as e:
-                error_msg = f"Failed to apply variant {variant.hgvs_c} to haplotype {i+1}: {e}"
-                plan.warnings.append(error_msg)
-                logger.error(error_msg)
-                # If a variant fails, we stop processing this haplotype to avoid incorrect results.
-                edited_seq = "" # Mark as failed
-                break
+                _logger.error(f"Failed to apply variant {variant.hgvs_c} "
+                              f"to haplotype {phase_id}: {e}")
+                # Re-raise to halt execution on an invalid variant application
+                raise
 
-        edited_sequences.append(edited_seq)
+        edited_sequences[phase_id] = current_seq
+        _logger.info(f"Finished processing haplotype {phase_id}.")
 
     return edited_sequences

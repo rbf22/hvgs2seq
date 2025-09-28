@@ -1,36 +1,58 @@
-from typing import TextIO, List
-from ..models import SequenceBundle
+"""
+Handles generation of FASTA formatted outputs.
+"""
+import logging
+from typing import List, Union
+from textwrap import wrap
+from ..models import SequenceBundle, TranscriptOutcome, TranscriptConfig
 
-def write_fasta(bundle: SequenceBundle, file_handle: TextIO, include: set = {"cdna", "protein"}):
+_logger = logging.getLogger(__name__)
+
+def _format_fasta_entry(header: str, sequence: str, line_length: int = 60) -> str:
+    """Formats a single sequence into a FASTA entry."""
+    wrapped_sequence = "\n".join(wrap(sequence, line_length))
+    return f">{header}\n{wrapped_sequence}\n"
+
+def generate_fasta_output(
+    bundle: SequenceBundle,
+    config: TranscriptConfig,
+    emit_protein: bool = True,
+    emit_cdna: bool = True
+) -> str:
     """
-    Writes sequences from a SequenceBundle to a file in FASTA format.
+    Generates a FASTA-formatted string containing the edited sequences.
 
     Args:
-        bundle: The SequenceBundle containing the sequences.
-        file_handle: A writable file handle.
-        include: A set specifying which sequences to include ("cdna", "protein").
+        bundle: The SequenceBundle containing the outcomes.
+        config: The TranscriptConfig for metadata.
+        emit_protein: Whether to include protein sequences in the output.
+        emit_cdna: Whether to include cDNA (mRNA) sequences in the output.
+
+    Returns:
+        A string in FASTA format.
     """
-    provenance = bundle.provenance
-    transcript_id = provenance.get("transcript_id", "unknown_transcript")
+    fasta_entries = []
 
-    def write_record(seq_id: str, seq: str):
-        """Helper to write a single FASTA record."""
-        if seq:
-            file_handle.write(f">{seq_id}\n")
-            # Write sequence, wrapping at 80 characters
-            for i in range(0, len(seq), 80):
-                file_handle.write(f"{seq[i:i+80]}\n")
+    all_outcomes = bundle.primary_outcomes + bundle.alternate_outcomes
 
-    # Write reference sequences
-    if "cdna" in include:
-        write_record(f"{transcript_id}|ref|cdna", bundle.cdna_ref)
-    if "protein" in include and bundle.protein_ref:
-        write_record(f"{transcript_id}|ref|protein", bundle.protein_ref)
+    for outcome in all_outcomes:
+        # Common part of the header
+        base_header = (
+            f"{config.transcript_id}|haplotype={outcome.haplotype_id}|"
+            f"scenario={outcome.scenario_id}"
+        )
 
-    # Write edited sequences for each haplotype
-    for i, (cdna_edited, protein_edited) in enumerate(zip(bundle.cdna_edited, bundle.protein_edited)):
-        haplotype_id = i + 1
-        if "cdna" in include:
-            write_record(f"{transcript_id}|haplotype={haplotype_id}|cdna", cdna_edited)
-        if "protein" in include and protein_edited:
-            write_record(f"{transcript_id}|haplotype={haplotype_id}|protein", protein_edited)
+        # Add cDNA sequence if requested
+        if emit_cdna:
+            cdna_header = f"{base_header}|type=cDNA"
+            fasta_entries.append(_format_fasta_entry(cdna_header, outcome.mrna_sequence))
+
+        # Add protein sequence if requested and available
+        if emit_protein and outcome.protein_outcome and outcome.protein_outcome.protein_sequence:
+            protein_header = f"{base_header}|type=protein|consequence={outcome.protein_outcome.consequence}"
+            fasta_entries.append(
+                _format_fasta_entry(protein_header, outcome.protein_outcome.protein_sequence)
+            )
+
+    _logger.info(f"Generated FASTA output with {len(fasta_entries)} entries.")
+    return "".join(fasta_entries)

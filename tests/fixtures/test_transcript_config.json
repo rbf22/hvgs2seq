@@ -1,0 +1,13 @@
+{
+    "transcript_id": "NM_TOY001.1",
+    "gene_symbol": "TOY",
+    "assembly": "GRCh38",
+    "strand": 1,
+    "exons": [
+        [101, 150],
+        [201, 275],
+        [301, 390]
+    ],
+    "cds_start_c": 11,
+    "cds_end_c": 196
+}

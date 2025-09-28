@@ -1,122 +1,115 @@
-from typing import Optional, Tuple, Dict, Any
+"""
+Handles CDS extraction, translation, and consequence analysis.
+"""
+import logging
+from ..models import TranscriptConfig, ProteinOutcome
 
-from ..config import TranscriptConfig
+_logger = logging.getLogger(__name__)
 
-# Standard genetic code for translation
+# Standard DNA codon table
 GENETIC_CODE = {
-    "ATA": "I", "ATC": "I", "ATT": "I", "ATG": "M",
-    "ACA": "T", "ACC": "T", "ACG": "T", "ACT": "T",
-    "AAC": "N", "AAT": "N", "AAA": "K", "AAG": "K",
-    "AGC": "S", "AGT": "S", "AGA": "R", "AGG": "R",
-    "CTA": "L", "CTC": "L", "CTG": "L", "CTT": "L",
-    "CCA": "P", "CCC": "P", "CCG": "P", "CCT": "P",
-    "CAC": "H", "CAT": "H", "CAA": "Q", "CAG": "Q",
-    "CGA": "R", "CGC": "R", "CGG": "R", "CGT": "R",
-    "GTA": "V", "GTC": "V", "GTG": "V", "GTT": "V",
-    "GCA": "A", "GCC": "A", "GCG": "A", "GCT": "A",
-    "GAC": "D", "GAT": "D", "GAA": "E", "GAG": "E",
-    "GGA": "G", "GGC": "G", "GGG": "G", "GGT": "G",
-    "TCA": "S", "TCC": "S", "TCG": "S", "TCT": "S",
-    "TTC": "F", "TTT": "F", "TTA": "L", "TTG": "L",
-    "TAC": "Y", "TAT": "Y", "TAA": "*", "TAG": "*",
-    "TGC": "C", "TGT": "C", "TGA": "*", "TGG": "W",
+    'ATA':'I', 'ATC':'I', 'ATT':'I', 'ATG':'M',
+    'ACA':'T', 'ACC':'T', 'ACG':'T', 'ACT':'T',
+    'AAC':'N', 'AAT':'N', 'AAA':'K', 'AAG':'K',
+    'AGC':'S', 'AGT':'S', 'AGA':'R', 'AGG':'R',
+    'CTA':'L', 'CTC':'L', 'CTG':'L', 'CTT':'L',
+    'CCA':'P', 'CCC':'P', 'CCG':'P', 'CCT':'P',
+    'CAC':'H', 'CAT':'H', 'CAA':'Q', 'CAG':'Q',
+    'CGA':'R', 'CGC':'R', 'CGG':'R', 'CGT':'R',
+    'GTA':'V', 'GTC':'V', 'GTG':'V', 'GTT':'V',
+    'GCA':'A', 'GCC':'A', 'GCG':'A', 'GCT':'A',
+    'GAC':'D', 'GAT':'D', 'GAA':'E', 'GAG':'E',
+    'GGA':'G', 'GGC':'G', 'GGG':'G', 'GGT':'G',
+    'TCA':'S', 'TCC':'S', 'TCG':'S', 'TCT':'S',
+    'TTC':'F', 'TTT':'F', 'TTA':'L', 'TTG':'L',
+    'TAC':'Y', 'TAT':'Y', 'TAA':'*', 'TAG':'*',
+    'TGC':'C', 'TGT':'C', 'TGA':'*', 'TGG':'W',
 }
 
-def extract_cds(cdna: str, config: TranscriptConfig) -> Optional[str]:
-    """
-    Extracts the coding sequence (CDS) from a cDNA sequence based on the
-    transcript configuration.
-    """
-    if config.cds_start_c is None or config.cds_end_c is None:
-        return None
-    # Convert from 1-based HGVS coordinates to 0-based Python indices
-    start_idx = config.cds_start_c - 1
-    end_idx = config.cds_end_c
-    return cdna[start_idx:end_idx]
-
-def translate(cds: str) -> str:
-    """
-    Translates a CDS sequence into a protein sequence using the standard genetic code.
-    Translation stops after the first stop codon is encountered. Stops are represented by '*'.
-    """
-    if not cds:
-        return ""
+def translate_sequence(seq: str, stop_symbol='*') -> str:
+    """Translates a DNA sequence into a protein sequence, including stop codons."""
     protein = []
-    for i in range(0, len(cds) - len(cds) % 3, 3):
-        codon = cds[i:i+3].upper()
-        amino_acid = GENETIC_CODE.get(codon, "X")  # 'X' for unknown codons
+    seq_len = len(seq) - (len(seq) % 3)
+    for i in range(0, seq_len, 3):
+        codon = seq[i:i+3].upper()
+        amino_acid = GENETIC_CODE.get(codon, 'X').replace('_', stop_symbol)
         protein.append(amino_acid)
-        if amino_acid == "*":
-            break  # Stop translation at the first stop codon
     return "".join(protein)
 
 def analyze_consequences(
-    protein_ref: Optional[str],
-    protein_edited: Optional[str],
-) -> Dict[str, Any]:
+    ref_cdna: str,
+    edited_cdna: str,
+    config: TranscriptConfig
+) -> ProteinOutcome:
     """
-    Compares reference and edited protein sequences to determine the consequence.
+    Analyzes the consequences of variants on the protein sequence with a clear priority.
     """
-    if protein_ref is None or protein_edited is None:
-        return {"consequence": "unknown", "details": "CDS not available or not translated."}
+    if config.cds_start_c is None or config.cds_end_c is None:
+        return ProteinOutcome(protein_sequence=None, hgvs_p=None, consequence="non_coding_transcript")
 
-    if protein_ref == protein_edited:
-        return {"consequence": "synonymous", "details": "No change in protein sequence."}
+    cds_start_idx = config.cds_start_c - 1
+    cds_end_idx = config.cds_end_c
 
-    # Check for frameshift by comparing lengths and looking for early termination
-    ref_len = len(protein_ref)
-    edited_len = len(protein_edited)
+    ref_cds = ref_cdna[cds_start_idx:cds_end_idx]
+    edited_cds = edited_cdna[cds_start_idx:cds_end_idx]
 
-    # Find first stop codon
-    ref_stop_idx = protein_ref.find("*")
-    edited_stop_idx = protein_edited.find("*")
+    # Priority 0: Start Loss
+    if ref_cds[:3] == 'ATG' and edited_cds[:3] != 'ATG':
+        return ProteinOutcome(protein_sequence=translate_sequence(edited_cds), hgvs_p="p.Met1?", consequence="start_loss")
 
-    # Handle lengths considering stop codons
-    ref_len_no_stop = ref_len if ref_stop_idx == -1 else ref_stop_idx
-    edited_len_no_stop = edited_len if edited_stop_idx == -1 else edited_stop_idx
+    ref_protein = translate_sequence(ref_cds)
+    edited_protein = translate_sequence(edited_cds)
 
-    if ref_len_no_stop != edited_len_no_stop:
-        return {"consequence": "frameshift", "details": f"Protein length changed from {ref_len_no_stop} to {edited_len_no_stop} amino acids."}
+    ref_prot_before_stop = ref_protein.split('*', 1)[0]
+    edited_prot_before_stop = edited_protein.split('*', 1)[0]
 
-    # Check for missense or nonsense
-    for i in range(ref_len):
-        if i >= edited_len or protein_ref[i] != protein_edited[i]:
-            if i < edited_len and protein_edited[i] == "*":
-                return {
-                    "consequence": "nonsense",
-                    "details": f"Stop codon introduced at position {i+1} (p.{protein_ref[i]}{i+1}*)."
-                }
-            elif i >= edited_len:
-                 return {
-                    "consequence": "frameshift", # Should have been caught by length check, but as a fallback
-                    "details": "Protein is truncated."
-                }
-            else:
-                return {
-                    "consequence": "missense",
-                    "details": f"Amino acid change at position {i+1} from {protein_ref[i]} to {protein_edited[i]} (p.{protein_ref[i]}{i+1}{protein_edited[i]})."
-                }
+    # Default values
+    consequence = "unknown"
+    hgvs_p = "p.?"
 
-    return {"consequence": "no_protein_change_detected", "details": "Sequences differ but no specific consequence found by this basic analysis."}
+    # Priority 1: Stop-gain (most severe outcome)
+    if '*' in edited_protein and edited_protein.find('*') < len(ref_prot_before_stop):
+        consequence = "stop_gain"
+        stop_pos = edited_protein.find('*')
+        hgvs_p = f"p.{ref_protein[stop_pos]}{stop_pos+1}*"
 
+    # Priority 2: Frameshift (if not already a stop-gain)
+    elif len(ref_cds) % 3 != len(edited_cds) % 3:
+        consequence = "frameshift_variant"
+        hgvs_p = "p.?" # Simplified for now
 
-def get_protein_sequence_and_consequences(
-    cdna_ref: str,
-    cdna_edited: str,
-    config: TranscriptConfig,
-) -> Tuple[Optional[str], Optional[str], Dict[str, Any]]:
-    """
-    Main function to extract CDS, translate, and analyze consequences.
-    """
-    cds_ref = extract_cds(cdna_ref, config)
-    cds_edited = extract_cds(cdna_edited, config)
+    # Priority 3: Stop-loss
+    elif ref_protein.endswith('*') and not edited_protein.endswith('*'):
+        consequence = "stop_loss"
+        hgvs_p = f"p.*{len(ref_prot_before_stop)+1}ext"
 
-    if cds_ref is None or cds_edited is None:
-        return None, None, {"consequence": "unknown", "details": "Could not extract CDS."}
+    # Priority 4: In-frame indel
+    elif len(ref_prot_before_stop) != len(edited_prot_before_stop):
+        consequence = "in_frame_indel"
+        hgvs_p = "p.?"
 
-    protein_ref = translate(cds_ref)
-    protein_edited = translate(cds_edited)
+    # Priority 5: Missense
+    elif ref_prot_before_stop != edited_prot_before_stop:
+        consequence = "missense_variant"
+        for i, (ref_aa, edit_aa) in enumerate(zip(ref_prot_before_stop, edited_prot_before_stop)):
+            if ref_aa != edit_aa:
+                hgvs_p = f"p.{ref_aa}{i+1}{edit_aa}"
+                break
 
-    consequences = analyze_consequences(protein_ref, protein_edited)
+    # Priority 6: Synonymous or no change
+    elif ref_prot_before_stop == edited_prot_before_stop:
+        if ref_cds != edited_cds:
+            consequence = "synonymous_variant"
+        else:
+            consequence = "no_change"
+        hgvs_p = "p.="
 
-    return protein_ref, protein_edited, consequences
+    final_protein_seq = edited_prot_before_stop
+    if '*' in edited_protein:
+        final_protein_seq += '*'
+
+    return ProteinOutcome(
+        protein_sequence=final_protein_seq,
+        hgvs_p=hgvs_p,
+        consequence=consequence
+    )
