@@ -1,29 +1,42 @@
-from pydantic import BaseModel
-import yaml
-from typing import Optional, List, Tuple
+"""
+Handles loading and validation of the transcript configuration.
+"""
+import json
+import logging
+from .models import TranscriptConfig
+from pydantic import ValidationError
 
-class TranscriptConfig(BaseModel):
-    """
-    Configuration for a single transcript, including its structure and genomic context.
-    """
-    transcript_id: str
-    gene_symbol: Optional[str] = None
-    assembly: str
-    strand: int
-    exons: List[Tuple[int, int]]
-    cds_start_c: Optional[int] = None
-    cds_end_c: Optional[int] = None
+_logger = logging.getLogger(__name__)
 
-def load_config(path: str) -> TranscriptConfig:
+def load_config(config_path: str) -> TranscriptConfig:
     """
-    Loads transcript configuration from a JSON or YAML file.
+    Loads a transcript configuration from a JSON file and validates it.
+
+    Args:
+        config_path: The path to the JSON configuration file.
+
+    Returns:
+        A validated TranscriptConfig object.
+
+    Raises:
+        FileNotFoundError: If the config file does not exist.
+        ValueError: If the config file is not valid JSON or fails validation.
     """
-    with open(path, 'r') as f:
-        if path.endswith(".json"):
-            import json
-            data = json.load(f)
-        elif path.endswith((".yaml", ".yml")):
-            data = yaml.safe_load(f)
-        else:
-            raise ValueError("Configuration file must be a .json or .yaml file")
-    return TranscriptConfig(**data)
+    _logger.info(f"Loading transcript configuration from {config_path}")
+    try:
+        with open(config_path, 'r') as f:
+            config_data = json.load(f)
+    except FileNotFoundError:
+        _logger.error(f"Configuration file not found at {config_path}")
+        raise
+    except json.JSONDecodeError as e:
+        _logger.error(f"Invalid JSON in configuration file: {config_path}")
+        raise ValueError(f"Invalid JSON in {config_path}: {e}") from e
+
+    try:
+        config = TranscriptConfig(**config_data)
+        _logger.info(f"Successfully loaded and validated configuration for {config.transcript_id}")
+        return config
+    except ValidationError as e:
+        _logger.error("Configuration validation failed.")
+        raise ValueError(f"Configuration validation failed: {e}") from e

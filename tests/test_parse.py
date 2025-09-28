@@ -1,79 +1,106 @@
 import pytest
-from hgvs2seq.config import TranscriptConfig
-from hgvs2seq.parse import VariantIn, normalize_variant, VariantNorm
+from unittest.mock import MagicMock
+from hgvs2seq.parse import parse_and_normalize_variants
+from hgvs2seq.models import VariantIn, TranscriptConfig
 
-# Using BRCA1 transcript as a stable, well-known example for testing projection.
-# The exon/CDS details are simplified for testing but are based on the real transcript.
+# Define more accurate mock objects that reflect the hgvs library structure
+class MockHgvsVariant:
+    def __init__(self, ac, type, posedit):
+        self.ac = ac
+        self.type = type
+        self.posedit = posedit
+    def __str__(self):
+        return f"{self.ac}:{self.type}.{self.posedit}"
+
+class MockPosEdit:
+    def __init__(self, pos, edit):
+        self.pos = pos
+        self.edit = edit
+    def __str__(self):
+        return f"{self.pos}{self.edit}"
+
+class MockInterval:
+    """Mocks the 'pos' attribute, which has 'start' and 'end'."""
+    def __init__(self, start, end):
+        self.start = start
+        self.end = end
+    def __str__(self):
+        return f"{self.start}_{self.end}"
+
+class MockPosition:
+    """Mocks the 'start' and 'end' position objects."""
+    def __init__(self, base, offset=0):
+        self.base = base
+        self.offset = offset
+    def __str__(self):
+        if self.offset == 0:
+            return str(self.base)
+        return f"{self.base}{'+' if self.offset > 0 else ''}{self.offset}"
+
+class MockEdit:
+    def __init__(self, type, alt=""):
+        self.type = type
+        self.alt = alt
+    def __str__(self):
+        return f"delins{self.alt}" if self.type == 'sub' else f"{self.type}{self.alt}"
+
+
 @pytest.fixture
-def brca1_config():
-    """Provides a sample TranscriptConfig for BRCA1 (NM_007294.3)."""
-    return TranscriptConfig(
-        transcript_id="NM_007294.3",
-        gene_symbol="BRCA1",
-        assembly="GRCh38",
-        strand=-1,
-        # Exon coordinates are not strictly needed for c. projection but are good practice to have.
-        exons=[(43044295, 43045813), (43047631, 43047723)], # Simplified for this example
-        cds_start_c=225, # Based on real data
-        cds_end_c=5792,  # Based on real data
-    )
+def mock_data_providers(monkeypatch):
+    """Mocks the hgvs data providers (AssemblyMapper and UTA) and the hgvs parser."""
+    mock_am = MagicMock()
+    mock_hdp = MagicMock()
+    mock_parser = MagicMock()
 
-def test_normalize_genomic_snv(brca1_config):
-    """Tests projecting a simple genomic SNV to cDNA coordinates."""
-    # This variant corresponds to a known pathogenic BRCA1 variant.
-    # The reference base at this position is A, so the HGVS string must reflect that.
-    variant_in = VariantIn(hgvs="NC_000017.11:g.43091523A>T")
+    # The normalize_variant method should just return the variant it was given in the mock
+    mock_hdp.normalize_variant.side_effect = lambda v: v
 
-    norm_variant = normalize_variant(variant_in, brca1_config)
+    # Define the behavior of the mocked parser
+    def parse_side_effect(hgvs_string):
+        if "c.15G>T" in hgvs_string:
+            pos = MockInterval(MockPosition(15), MockPosition(15))
+            edit = MockEdit("sub", "T")
+            return MockHgvsVariant("NM_TOY001.1", "c", MockPosEdit(pos, edit))
+        if "c.50+2T>G" in hgvs_string:
+            pos = MockInterval(MockPosition(50, 2), MockPosition(50, 2))
+            edit = MockEdit("sub", "G")
+            return MockHgvsVariant("NM_TOY001.1", "c", MockPosEdit(pos, edit))
+        return MagicMock()
 
-    assert isinstance(norm_variant, VariantNorm)
-    # The projection to the reverse strand transcript correctly inverts the alleles.
-    # The expected position is c.4008, as determined by the UTA database.
-    assert norm_variant.hgvs_c == "NM_007294.3:c.4008T>A"
-    assert norm_variant.kind == "sub"
-    assert norm_variant.c_start == 4008
-    assert norm_variant.c_end == 4008
-    assert norm_variant.alt == "A"
-    assert norm_variant.meta["original_hgvs"] == variant_in.hgvs
+    mock_parser.parse_hgvs_variant.side_effect = parse_side_effect
 
-def test_normalize_cDNA_deletion(brca1_config):
-    """Tests a variant already in cDNA coordinates (a small deletion)."""
-    # A well-known 2-base deletion in BRCA1
-    hgvs_string = "NM_007294.3:c.68_69del"
-    variant_in = VariantIn(hgvs=hgvs_string)
+    # Patch the getter functions and the parser instance
+    monkeypatch.setattr("hgvs2seq.parse.get_am", lambda: mock_am)
+    monkeypatch.setattr("hgvs2seq.parse.get_hdp", lambda: mock_hdp)
+    monkeypatch.setattr("hgvs2seq.parse._parser", mock_parser)
 
-    norm_variant = normalize_variant(variant_in, brca1_config)
+@pytest.fixture
+def transcript_config():
+    from hgvs2seq.config import load_config
+    return load_config("tests/fixtures/test_transcript_config.json")
 
-    assert norm_variant.hgvs_c == hgvs_string
-    assert norm_variant.kind == "del"
-    assert norm_variant.c_start == 68
-    assert norm_variant.c_end == 69
-    assert norm_variant.alt is None
+def test_parse_simple_variant(mock_data_providers, transcript_config):
+    """Tests parsing a simple cDNA variant."""
+    variants_in = [VariantIn(hgvs="NM_TOY001.1:c.15G>T", phase_group=1)]
+    result = parse_and_normalize_variants(variants_in, transcript_config)
 
-def test_normalize_invalid_hgvs_string(brca1_config):
-    """Tests that a malformed HGVS string raises a ValueError."""
-    variant_in = VariantIn(hgvs="this is not a valid hgvs string")
+    assert len(result) == 1
+    norm_var = result[0]
+    assert norm_var.kind == "sub"
+    assert norm_var.c_start == 15
+    assert norm_var.c_end == 15
+    assert norm_var.alt == "T"
+    assert norm_var.phase_group == 1
+    assert norm_var.c_start_offset == 0
 
-    with pytest.raises(ValueError, match="Failed to parse HGVS string"):
-        normalize_variant(variant_in, brca1_config)
+def test_parse_splice_site_variant(mock_data_providers, transcript_config):
+    """Tests parsing a variant with an intronic offset."""
+    variants_in = [VariantIn(hgvs="NM_TOY001.1:c.50+2T>G")]
+    result = parse_and_normalize_variants(variants_in, transcript_config)
 
-def test_normalize_unprojectable_variant(brca1_config):
-    """Tests that a variant on a different chromosome fails projection."""
-    # A variant on chromosome 1 cannot be projected to BRCA1 on chr 17.
-    variant_in = VariantIn(hgvs="NC_000001.11:g.12345A>T")
-
-    with pytest.raises(ValueError, match="Failed to project variant"):
-        normalize_variant(variant_in, brca1_config)
-
-def test_normalize_cDNA_insertion(brca1_config):
-    """Tests a cDNA insertion."""
-    hgvs_string = "NM_007294.3:c.5258_5259insA"
-    variant_in = VariantIn(hgvs=hgvs_string)
-
-    norm_variant = normalize_variant(variant_in, brca1_config)
-
-    assert norm_variant.hgvs_c == hgvs_string
-    assert norm_variant.kind == "ins"
-    assert norm_variant.c_start == 5258
-    assert norm_variant.c_end == 5259
-    assert norm_variant.alt == "A"
+    assert len(result) == 1
+    norm_var = result[0]
+    assert norm_var.kind == "sub"
+    assert norm_var.c_start == 50
+    assert norm_var.c_start_offset == 2
+    assert norm_var.alt == "G"

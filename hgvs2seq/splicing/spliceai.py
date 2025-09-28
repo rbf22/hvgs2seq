@@ -1,164 +1,85 @@
-import subprocess
-import tempfile
+"""
+Handles annotation of variants that may impact splicing.
+Initially, this module will not run the SpliceAI tool itself, but will
+implement the logic to flag variants in or near canonical splice sites.
+"""
 import logging
-from typing import List, Dict, Any, cast
+from typing import List, Optional
+from ..models import VariantNorm, TranscriptConfig
 
-import hgvs.parser
-import hgvs.sequencevariant
-import hgvs.posedit
-import hgvs.location
+_logger = logging.getLogger(__name__)
 
-from ..models import VariantNorm
-from ..config import TranscriptConfig
-from ..project import project_c_to_g
+# Define the windows for splice site annotation
+CANONICAL_DONOR_WINDOW = {1, 2}
+CANONICAL_ACCEPTOR_WINDOW = {-1, -2}
 
-logger = logging.getLogger(__name__)
-_hp = hgvs.parser.Parser()
-
-
-def _parse_spliceai_info(info_str: str) -> Dict[str, Any]:
+def annotate_splicing_impact(
+    variant: VariantNorm,
+    config: TranscriptConfig
+) -> Optional[str]:
     """
-    Parses the SpliceAI annotation from the VCF INFO field.
-    The format is: ALLELE|SYMBOL|DS_AG|DS_AL|DS_DG|DS_DL|DP_AG|DP_AL|DP_DG|DP_DL
-    """
-    try:
-        # The annotation is typically prefixed with 'SpliceAI='
-        spliceai_field = next(s for s in info_str.split(';') if s.startswith('SpliceAI='))
-        _, data = spliceai_field.split('=', 1)
-
-        # There can be multiple predictions for a variant (e.g., if it hits multiple genes).
-        # We'll take the first one for simplicity here. A more robust implementation might handle all.
-        first_prediction = data.split(',')[0]
-        parts = first_prediction.split('|')
-
-        return {
-            "allele": parts[0],
-            "symbol": parts[1],
-            "ds_ag": float(parts[2]), # delta score acceptor gain
-            "ds_al": float(parts[3]), # delta score acceptor loss
-            "ds_dg": float(parts[4]), # delta score donor gain
-            "ds_dl": float(parts[5]), # delta score donor loss
-            "dp_ag": int(parts[6]),   # delta position acceptor gain
-            "dp_al": int(parts[7]),   # delta position acceptor loss
-            "dp_dg": int(parts[8]),   # delta position donor gain
-            "dp_dl": int(parts[9]),   # delta position donor loss
-        }
-    except (StopIteration, IndexError, ValueError) as e:
-        logger.warning(f"Could not parse SpliceAI info field: '{info_str}'. Error: {e}")
-        return {"status": "parsing_failed", "raw_info": info_str}
-
-
-def annotate_spliceai(
-    variants: List[VariantNorm],
-    config: "TranscriptConfig",
-    *,
-    reference_path: str,
-    distance: int = 500,
-    **kwargs: Any,
-) -> Dict[str, Any]:
-    """
-    Annotates variants with SpliceAI predictions by calling the command-line tool.
+    Analyzes a single variant to see if it falls within a canonical splice region.
 
     Args:
-        variants: A list of normalized variants to annotate.
-        config: The transcript configuration.
-        reference_path: The file path to the reference genome FASTA file (e.g., hg38.fa).
-                        This is a required argument.
-        distance: Maximum distance between the variant and splice site for annotation.
-        **kwargs: Other keyword arguments (currently unused).
+        variant: The VariantNorm object to analyze.
+        config: The TranscriptConfig containing exon boundary information.
 
     Returns:
-        A dictionary of annotations for each variant.
+        A string describing the potential splice impact, or None if not applicable.
     """
-    if not reference_path:
-        raise ValueError("A valid 'reference_path' to a FASTA file is required for SpliceAI.")
+    # Splicing analysis is only relevant for variants with intronic offsets
+    if variant.c_start_offset == 0 and variant.c_end_offset == 0:
+        return None
 
-    annotations = {}
-    if config.assembly.lower() not in ["grch37", "grch38", "hg19", "hg38"]:
-         raise ValueError(f"Unsupported assembly for SpliceAI: {config.assembly}. Only grch37/hg19 and grch38/hg38 are supported by the bundled annotations.")
+    # Calculate the cDNA coordinates of exon boundaries
+    exon_lengths = [(end - start + 1) for start, end in config.exons]
+    exon_end_positions_c = {sum(exon_lengths[:i+1]) for i in range(len(exon_lengths))}
+    # The start of the first exon is 1. Subsequent starts are after the previous end.
+    exon_start_positions_c = {1}
+    cumulative_length = 0
+    for length in exon_lengths[:-1]:
+        cumulative_length += length
+        exon_start_positions_c.add(cumulative_length + 1)
 
-    assembly_arg = "grch38" if config.assembly.lower() in ["grch38", "hg38"] else "grch37"
+    # Check for donor site variants (e.g., c.123+1G>A)
+    # These occur after an exon ends.
+    if variant.c_start in exon_end_positions_c and variant.c_start_offset > 0:
+        if variant.c_start_offset in CANONICAL_DONOR_WINDOW:
+            return f"canonical_donor_site_variant (at c.{variant.c_start}+{variant.c_start_offset})"
+        else:
+            return f"donor_region_variant (at c.{variant.c_start}+{variant.c_start_offset})"
 
-    # Create VCF content in-memory
-    vcf_header = "##fileformat=VCFv4.2\n"
-    vcf_header += f"##reference={config.assembly}\n"
-    vcf_header += "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+    # Check for acceptor site variants (e.g., c.124-2A>G)
+    # These occur before an exon starts.
+    if variant.c_start in exon_start_positions_c and variant.c_start_offset < 0:
+        if variant.c_start_offset in CANONICAL_ACCEPTOR_WINDOW:
+            return f"canonical_acceptor_site_variant (at c.{variant.c_start}{variant.c_start_offset})"
+        else:
+            return f"acceptor_region_variant (at c.{variant.c_start}{variant.c_start_offset})"
 
-    vcf_records = []
-    variants_to_process = []
-    for variant in variants:
-        try:
-            # Project c. variant to g. coordinate
-            var_c = _hp.parse_hgvs_variant(variant.hgvs_c)
-            var_g = project_c_to_g(var_c)
+    return "intronic_variant"
 
-            pos_g = cast(hgvs.location.SimplePosition, var_g.posedit.pos.start)
-            edit_g = var_g.posedit.edit
 
-            chrom = var_g.ac
-            pos = pos_g.base
-            ref = edit_g.ref
-            alt = edit_g.alt
+def analyze_all_variants_for_splicing(
+    variants: List[VariantNorm],
+    config: TranscriptConfig
+) -> List[str]:
+    """
+    Analyzes a list of variants and returns annotations for those with
+    potential splicing impact.
 
-            # Use the c. HGVS string as the ID to map results back
-            vcf_records.append(f"{chrom}\t{pos}\t{variant.hgvs_c}\t{ref}\t{alt}\t.\tPASS\t.\n")
-            variants_to_process.append(variant)
-        except (ValueError, hgvs.exceptions.HGVSError) as e:
-            logger.error(f"Could not project variant {variant.hgvs_c} for SpliceAI: {e}")
-            annotations[variant.hgvs_c] = {"status": "projection_failed", "error": str(e)}
+    Args:
+        variants: A list of VariantNorm objects.
+        config: The TranscriptConfig.
 
-    if not vcf_records:
-        logger.warning("No variants could be processed for SpliceAI.")
-        return annotations
+    Returns:
+        A list of string annotations for relevant variants.
+    """
+    annotations = []
+    for var in variants:
+        annotation = annotate_splicing_impact(var, config)
+        if annotation:
+            annotations.append(f"Variant {var.hgvs_c}: {annotation}")
 
-    vcf_content = vcf_header + "".join(vcf_records)
-
-    with tempfile.NamedTemporaryFile(mode='w', delete=True, suffix=".vcf") as input_vcf, \
-         tempfile.NamedTemporaryFile(mode='r', delete=True, suffix=".vcf") as output_vcf:
-
-        input_vcf.write(vcf_content)
-        input_vcf.flush()
-
-        command = [
-            "spliceai",
-            "-I", input_vcf.name,
-            "-O", output_vcf.name,
-            "-R", reference_path, # This needs to be a path to the reference fasta file
-            "-A", assembly_arg,
-            "-D", str(distance)
-        ]
-
-        try:
-            # SpliceAI can be noisy, so we capture stderr
-            logger.info(f"Running SpliceAI with command: {' '.join(command)}")
-            result = subprocess.run(command, check=True, capture_output=True, text=True, timeout=300)
-            logger.debug(f"SpliceAI stderr:\n{result.stderr}")
-
-            # Parse the output VCF
-            output_vcf.seek(0)
-            for line in output_vcf:
-                if line.startswith('#'):
-                    continue
-                fields = line.strip().split('\t')
-                var_id = fields[2]
-                info = fields[7]
-                annotations[var_id] = _parse_spliceai_info(info)
-
-        except FileNotFoundError:
-            msg = "The 'spliceai' command was not found. Is it installed and in the system's PATH?"
-            logger.error(msg)
-            raise RuntimeError(msg)
-        except subprocess.CalledProcessError as e:
-            msg = f"SpliceAI execution failed with exit code {e.returncode}.\n"
-            msg += f"Stderr: {e.stderr}\n"
-            msg += "This may be due to a missing reference genome file or incorrect VCF input."
-            logger.error(msg)
-            # Annotate all processed variants with the failure
-            for var in variants_to_process:
-                annotations[var.hgvs_c] = {"status": "execution_failed", "error": msg}
-        except Exception as e:
-            logger.error(f"An unexpected error occurred during SpliceAI annotation: {e}")
-            for var in variants_to_process:
-                annotations[var.hgvs_c] = {"status": "unexpected_error", "error": str(e)}
-
+    _logger.info(f"Found {len(annotations)} variants with potential splicing impact.")
     return annotations

@@ -1,40 +1,72 @@
-import hgvs.dataproviders.uta
-from functools import lru_cache
+"""
+Handles fetching of reference sequences for a given transcript.
+"""
+import logging
+from .data_provider import get_sr
+from .models import TranscriptConfig
 
-# This is a simplified setup. In a real application, this might be
-# part of a shared data provider connection management system.
-try:
-    hdp = hgvs.dataproviders.uta.connect()
-except Exception as e:
-    raise RuntimeError(
-        "Failed to connect to HGVS data provider (UTA) for sequence fetching. "
-        "Please check network connection and UTA service status. "
-        f"Original error: {e}"
-    )
+_logger = logging.getLogger(__name__)
 
-@lru_cache(maxsize=128)
-def get_reference_sequence(transcript_id: str) -> str:
+def get_reference_cDNA(transcript_id: str) -> str:
     """
-    Fetches the reference cDNA sequence for a given transcript ID from UTA.
+    Fetches the reference cDNA sequence for a given transcript ID.
 
     Args:
-        transcript_id: The RefSeq or Ensembl transcript ID (e.g., "NM_000551.3").
+        transcript_id: The ID of the transcript (e.g., "NM_000059.3").
 
     Returns:
         The cDNA sequence as a string.
 
     Raises:
-        ValueError: If the sequence could not be fetched.
+        KeyError: If the transcript ID is not found in SeqRepo.
     """
+    _logger.info(f"Fetching reference cDNA for {transcript_id}")
     try:
-        # UTA provides sequence data via the `get_seq` method.
-        # For transcripts, the accession is the ID itself.
-        sequence = hdp.get_seq(transcript_id)
-        if not sequence:
-            raise ValueError(f"No sequence found for transcript '{transcript_id}'.")
+        # SeqRepo stores sequences as bytes, so we decode to string
+        sr = get_sr()
+        sequence = sr[transcript_id].decode('utf-8')
+        _logger.info(f"Successfully fetched reference cDNA for {transcript_id}")
         return sequence
+    except KeyError:
+        _logger.error(f"Transcript ID '{transcript_id}' not found in SeqRepo.")
+        raise KeyError(f"Could not fetch reference sequence for '{transcript_id}'. "
+                       "Ensure the ID is correct and the sequence exists in your SeqRepo instance.")
     except Exception as e:
-        # Catch other potential exceptions from the data provider.
-        raise ValueError(
-            f"An error occurred while fetching the sequence for '{transcript_id}': {e}"
-        )
+        _logger.error(f"An unexpected error occurred while fetching sequence for {transcript_id}: {e}")
+        raise
+
+def build_cdna_from_exons(config: TranscriptConfig) -> str:
+    """
+    Constructs the cDNA sequence by concatenating exon sequences fetched
+    from the genomic reference based on the transcript configuration.
+    This is an alternative to fetching the transcript directly and ensures
+    the cDNA matches the provided exon structure.
+
+    Args:
+        config: The TranscriptConfig object.
+
+    Returns:
+        The constructed cDNA sequence as a string.
+    """
+    _logger.info(f"Building cDNA for {config.transcript_id} from {len(config.exons)} exons.")
+
+    # We need a genomic sequence accession for the assembly mapper
+    # This part can be tricky. We'll try to infer it from hgvs, but for now,
+    # this function is a placeholder for a more robust implementation.
+    # For now, we will rely on get_reference_cDNA.
+    # A full implementation would require mapping the gene/transcript to a chromosome,
+    # which is beyond the scope of this initial step.
+
+    # This is a simplified example of what would be needed:
+    # chrom = "NC_000017.11" # This would need to be fetched/mapped
+    # full_sequence = ""
+    # for start, end in config.exons:
+    #     exon_seq = sr.fetch(chrom, start, end)
+    #     full_sequence += exon_seq
+    # if config.strand == -1:
+    #     full_sequence = str(Seq(full_sequence).reverse_complement())
+
+    _logger.warning("build_cdna_from_exons is not fully implemented. "
+                    "Relying on get_reference_cDNA for now.")
+
+    return get_reference_cDNA(config.transcript_id)

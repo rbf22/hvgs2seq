@@ -1,0 +1,24 @@
+# A collection of variants for testing the hgvs2seq pipeline.
+
+# Missense variant
+NM_TOY001.1:c.15G>T
+
+# Frameshift deletion
+NM_TOY001.1:c.40del
+
+# In-frame deletion
+NM_TOY001.1:c.61_63del
+
+# Synonymous variant
+NM_TOY001.1:c.90C>G
+
+# Stop-gain (nonsense) variant
+NM_TOY001.1:c.100C>A
+
+# Splice site variant
+NM_TOY001.1:c.50+2T>G
+
+# Phased variants
+NM_TOY001.1:c.25C>G #phase=1
+NM_TOY001.1:c.75A>T #phase=1
+NM_TOY001.1:c.30G>C #phase=2

@@ -1,205 +1,126 @@
-import json
-import logging
-from pathlib import Path
-from typing import TextIO
-
+"""
+The command-line interface for the hgvs2seq tool.
+"""
 import click
+import logging
+import sys
+from typing import List, Optional
+import re
 
-from hgvs2seq import apply_variants, load_config, VariantIn
-from hgvs2seq.config import TranscriptConfig
+from . import __version__
+from .models import VariantIn, SequenceBundle, TranscriptOutcome
+from .config import load_config
+from .refseq import get_reference_cDNA
+from .parse import parse_and_normalize_variants
+from .apply.batch import apply_variants_in_batch
+from .consequence.cds import analyze_consequences
+from .consequence.nmd import check_nmd
+from .splicing.spliceai import analyze_all_variants_for_splicing
+from .io.jsonio import generate_json_output
+from .io.fasta import generate_fasta_output
 
-# Set up basic logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-logger = logging.getLogger(__name__)
+# Setup logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+_logger = logging.getLogger(__name__)
 
-def parse_variants_file(file: TextIO) -> list[VariantIn]:
-    """Parses a file with one HGVS string per line."""
+def parse_variants_file(file_path: str) -> List[VariantIn]:
+    """Parses a file of HGVS strings, one per line, with optional phase comments."""
     variants = []
-    for line in file:
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        # Rudimentary phase parsing from comments, e.g., #phase=1
-        phase_group = None
-        if "#" in line:
-            comment = line.split("#", 1)[1]
-            if "phase=" in comment:
-                try:
-                    phase_group = int(comment.split("phase=")[1].strip())
-                except (ValueError, IndexError):
-                    logger.warning(f"Could not parse phase from comment: '{comment}'")
-            line = line.split("#", 1)[0].strip()
+    phase_regex = re.compile(r'#\s*phase\s*=\s*(\d+)')
+    with open(file_path, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
 
-        variants.append(VariantIn(hgvs=line, phase_group=phase_group))
+            phase_group: Optional[int] = None
+            match = phase_regex.search(line)
+            if match:
+                phase_group = int(match.group(1))
+                # Remove comment from hgvs string
+                line = phase_regex.sub('', line).strip()
+
+            variants.append(VariantIn(hgvs=line, phase_group=phase_group))
     return variants
 
 @click.command()
-@click.option(
-    "--transcript",
-    required=True,
-    help="Transcript ID (e.g., NM_000551.3). A corresponding config JSON file is expected.",
-)
-@click.option(
-    "--assembly",
-    required=True,
-    help="Reference assembly (e.g., GRCh38).",
-)
-@click.option(
-    "--variants",
-    "variants_file",
-    type=click.File("r"),
-    required=True,
-    help="Path to a file containing HGVS strings, one per line.",
-)
-@click.option(
-    "--out",
-    "out_json_file",
-    type=click.File("w"),
-    help="Path to write the output JSON SequenceBundle.",
-)
-@click.option(
-    "--fasta",
-    "out_fasta_file",
-    type=click.File("w"),
-    help="Path to write the output FASTA sequences (cDNA and protein).",
-)
-@click.option(
-    "--policy",
-    type=click.Choice(["order_by_pos", "reject_overlaps"], case_sensitive=False),
-    default="order_by_pos",
-    show_default=True,
-    help="Policy for handling overlapping variants.",
-)
-@click.option(
-    "--emit",
-    default="cdna,protein",
-    show_default=True,
-    help="Comma-separated list of sequences to output (e.g., 'cdna,protein').",
-)
-@click.option(
-    "--annotate-splicing/--no-annotate-splicing",
-    default=False,
-    show_default=True,
-    help="Enable SpliceAI annotation.",
-)
-@click.option(
-    "--reference-path",
-    type=click.Path(exists=True, dir_okay=False),
-    help="Path to the reference genome FASTA file (required for SpliceAI).",
-)
-@click.option(
-    "--spliceai-distance",
-    type=int,
-    default=500,
-    show_default=True,
-    help="SpliceAI: maximum distance between variant and splice site.",
-)
-@click.option(
-    "--annotate-nmd/--no-annotate-nmd",
-    default=False,
-    show_default=True,
-    help="Enable NMD prediction.",
-)
-@click.option(
-    "--nmd-threshold",
-    type=int,
-    default=50,
-    show_default=True,
-    help="NMD: distance from PTC to last exon-exon junction to trigger NMD.",
-)
-def main(
-    transcript: str,
-    assembly: str,
-    variants_file: TextIO,
-    out_json_file: TextIO | None,
-    out_fasta_file: TextIO | None,
-    policy: str,
-    emit: str,
-    annotate_splicing: bool,
-    reference_path: str | None,
-    spliceai_distance: int,
-    annotate_nmd: bool,
-    nmd_threshold: int,
-):
+@click.version_option(version=__version__)
+@click.option('--config-path', '-c', required=True, type=click.Path(exists=True, dir_okay=False),
+              help='Path to the transcript configuration JSON file.')
+@click.option('--variants-path', '-v', required=True, type=click.Path(exists=True, dir_okay=False),
+              help='Path to a text file with one HGVS variant per line.')
+@click.option('--json-out', '-jo', type=click.Path(dir_okay=False),
+              help='Path to write the output JSON file.')
+@click.option('--fasta-out', '-fo', type=click.Path(dir_okay=False),
+              help='Path to write the output FASTA file.')
+@click.option('--emit-protein/--no-emit-protein', default=True, help='Include protein sequences in FASTA output.')
+@click.option('--emit-cdna/--no-emit-cdna', default=True, help='Include cDNA sequences in FASTA output.')
+def main(config_path, variants_path, json_out, fasta_out, emit_protein, emit_cdna):
     """
-    Applies HGVS variants to a transcript and predicts the consequences.
+    Takes a list of HGVS variants and a transcript, and outputs the resulting sequences.
     """
-    logger.info(f"Processing transcript {transcript} on assembly {assembly}")
+    _logger.info(f"hgvs2seq v{__version__} starting...")
 
-    # --- Configuration and Input Parsing ---
     try:
-        # Assuming load_config can find a file like `NM_000551.3.json` or fetch it.
-        config_path = f"{transcript}.json"
-        if not Path(config_path).exists():
-             logger.warning(f"Config file {config_path} not found. `load_config` will try to fetch from UTA.")
-        cfg = load_config(config_path)
-        # Override assembly if provided on CLI
-        cfg.assembly = assembly
-    except Exception as e:
-        logger.error(f"Failed to load transcript configuration for {transcript}: {e}")
-        raise click.Abort()
+        # 1. Load configuration and reference data
+        config = load_config(config_path)
+        variants_in = parse_variants_file(variants_path)
+        ref_cdna = get_reference_cDNA(config.transcript_id)
 
-    variants = parse_variants_file(variants_file)
-    logger.info(f"Loaded {len(variants)} variants from {variants_file.name}")
+        # 2. Parse and normalize variants
+        norm_variants = parse_and_normalize_variants(variants_in, config)
 
-    outputs_set = set(emit.split(','))
+        # 3. Apply variants in batch
+        edited_sequences_by_haplotype = apply_variants_in_batch(ref_cdna, norm_variants)
 
-    # --- Parameter Validation and Preparation ---
-    if annotate_splicing and not reference_path:
-        logger.error("--reference-path is required when --annotate-splicing is enabled.")
-        raise click.Abort()
+        # 4. Analyze consequences for each haplotype
+        primary_outcomes = []
+        for hap_id, edited_cdna in edited_sequences_by_haplotype.items():
+            _logger.info(f"Analyzing consequences for haplotype {hap_id}...")
+            protein_outcome = analyze_consequences(ref_cdna, edited_cdna, config)
+            nmd_outcome = check_nmd(protein_outcome, config)
 
-    spliceai_params = {
-        "reference_path": reference_path,
-        "distance": spliceai_distance,
-    }
+            transcript_outcome = TranscriptOutcome(
+                haplotype_id=hap_id,
+                mrna_sequence=edited_cdna,
+                protein_outcome=protein_outcome,
+                nmd=nmd_outcome,
+            )
+            primary_outcomes.append(transcript_outcome)
 
-    nmd_params = {
-        "nmd_threshold": nmd_threshold,
-    }
+        # 5. Perform splicing analysis (annotation)
+        splice_annotations = analyze_all_variants_for_splicing(norm_variants, config)
 
-    # --- Core Logic ---
-    try:
-        bundle = apply_variants(
-            cfg=cfg,
-            variants=variants,
-            policy=policy,
-            outputs=outputs_set,
-            annotate_splicing=annotate_splicing,
-            annotate_nmd=annotate_nmd,
-            spliceai_params=spliceai_params,
-            nmd_params=nmd_params,
+        # 6. Assemble the final SequenceBundle
+        bundle = SequenceBundle(
+            primary_outcomes=primary_outcomes,
+            provenance={
+                "tool_version": __version__,
+                "transcript_id": config.transcript_id,
+                "assembly": config.assembly,
+                "input_variants": [v.hgvs for v in variants_in],
+            },
+            warnings=splice_annotations
         )
+
+        # 7. Generate and write outputs
+        if json_out:
+            json_output = generate_json_output(bundle)
+            with open(json_out, 'w') as f:
+                f.write(json_output)
+            _logger.info(f"Wrote JSON output to {json_out}")
+
+        if fasta_out:
+            fasta_output = generate_fasta_output(bundle, config, emit_protein, emit_cdna)
+            with open(fasta_out, 'w') as f:
+                f.write(fasta_output)
+            _logger.info(f"Wrote FASTA output to {fasta_out}")
+
+        _logger.info("hgvs2seq finished successfully.")
+
     except Exception as e:
-        logger.error(f"An error occurred during variant application: {e}")
-        raise click.Abort()
+        _logger.error(f"An error occurred: {e}", exc_info=True)
+        sys.exit(1)
 
-    # --- Output Generation ---
-    if out_json_file:
-        logger.info(f"Writing JSON output to {out_json_file.name}")
-        out_json_file.write(bundle.model_dump_json(indent=2))
-
-    if out_fasta_file:
-        logger.info(f"Writing FASTA output to {out_fasta_file.name}")
-        # Write reference sequences
-        if "cdna" in outputs_set:
-            out_fasta_file.write(f">cdna_ref|{cfg.transcript_id}\n")
-            out_fasta_file.write(bundle.cdna_ref + "\n")
-        if "protein" in outputs_set and bundle.protein_ref:
-            out_fasta_file.write(f">protein_ref|{cfg.transcript_id}\n")
-            out_fasta_file.write(bundle.protein_ref + "\n")
-
-        # Write edited sequences per haplotype
-        for i, (cdna_edited, prot_edited) in enumerate(zip(bundle.cdna_edited, bundle.protein_edited)):
-            hap_id = f"haplotype_{i+1}"
-            if "cdna" in outputs_set and cdna_edited:
-                out_fasta_file.write(f">cdna_edited|{cfg.transcript_id}|{hap_id}\n")
-                out_fasta_file.write(cdna_edited + "\n")
-            if "protein" in outputs_set and prot_edited:
-                out_fasta_file.write(f">protein_edited|{cfg.transcript_id}|{hap_id}\n")
-                out_fasta_file.write(prot_edited + "\n")
-
-    logger.info("Processing complete.")
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
