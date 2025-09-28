@@ -1,104 +1,77 @@
-from typing import Dict, Any, Optional
+"""
+Handles prediction of nonsense-mediated decay (NMD).
+"""
+import logging
+from ..models import TranscriptConfig, ProteinOutcome, NMDOutcome
 
-from ..config import TranscriptConfig
-from .cds import extract_cds, translate
+_logger = logging.getLogger(__name__)
 
-# The default distance from a PTC to the final exon-exon junction that typically triggers NMD.
-NMD_THRESHOLD_DEFAULT = 50
+# The distance from a PTC to the last exon-exon junction to trigger NMD.
+NMD_RULE_DISTANCE_NT = 55
 
 def check_nmd(
-    edited_cdna: str,
-    protein_ref: Optional[str],
-    config: TranscriptConfig,
-    *,
-    nmd_threshold: int = NMD_THRESHOLD_DEFAULT,
-) -> Dict[str, Any]:
+    protein_outcome: ProteinOutcome,
+    config: TranscriptConfig
+) -> NMDOutcome:
     """
-    Applies a standard set of rules to determine if a transcript with a
-    premature termination codon (PTC) is a likely candidate for
-    Nonsense-Mediated Decay (NMD).
-
-    The primary rule is:
-    - If a PTC is located more than 50-55 nucleotides upstream of the
-      final exon-exon junction, the transcript is likely targeted for NMD.
-
-    Exceptions:
-    - Transcripts with only one exon (intronless).
-    - PTCs located in the last exon.
+    Checks if a transcript with a premature termination codon (PTC) is likely
+    to be targeted by nonsense-mediated decay (NMD).
 
     Args:
-        edited_cdna: The full cDNA sequence of the edited transcript.
-        protein_ref: The reference protein sequence, including the stop codon (*).
-        config: The transcript configuration, containing exon structure and CDS info.
+        protein_outcome: The outcome of the protein analysis.
+        config: The transcript configuration containing exon information.
 
     Returns:
-        A dictionary containing the NMD prediction ("NMD_likely", "NMD_escaped", etc.)
-        and a rationale for the decision.
+        An NMDOutcome object with the status and rationale.
     """
-    # Exception 1: Intronless transcripts are not subject to NMD by this rule.
+    # 1. NMD is only relevant if there's a premature stop codon (stop_gain).
+    if protein_outcome.consequence != "stop_gain":
+        return NMDOutcome(status="not_applicable", rationale="No premature termination codon found.")
+
+    # 2. Handle intronless transcripts (single exon).
     if len(config.exons) <= 1:
-        return {"result": "NMD_escaped", "reason": "Intronless transcript."}
+        return NMDOutcome(status="escape", rationale="Transcript is intronless.")
 
-    # Determine the position of the last exon-exon junction in cDNA coordinates.
-    # This assumes exons in config are ordered by transcription.
-    try:
-        exon_lengths = [end - start + 1 for start, end in config.exons]
-        last_junction_pos_c = sum(exon_lengths[:-1])
-    except (TypeError, IndexError):
-        return {"result": "unknown", "reason": "Could not determine exon structure from config."}
+    # 3. Find the position of the PTC in the cDNA.
+    # The protein sequence includes the stop codon ('*').
+    ptc_protein_pos = protein_outcome.protein_sequence.find('*')
+    if ptc_protein_pos == -1:
+        # This case should not happen if consequence is stop_gain, but as a safeguard:
+        return NMDOutcome(status="not_applicable", rationale="Could not locate PTC in protein sequence.")
 
-    # Extract the edited CDS and translate it to find the PTC.
-    cds_edited = extract_cds(edited_cdna, config)
-    if not cds_edited:
-        return {"result": "unknown", "reason": "Could not extract CDS from edited cDNA."}
-
-    protein_edited = translate(cds_edited)
-    ptc_aa_pos = protein_edited.find('*')
-
-    # If there's no stop codon at all, NMD is not applicable.
-    if ptc_aa_pos == -1:
-        return {"result": "NMD_not_applicable", "reason": "No stop codon found in edited sequence."}
-
-    # Check if the stop codon is premature by comparing to the reference.
-    if protein_ref is None:
-        return {"result": "unknown", "reason": "Reference protein not provided to check for PTC."}
-
-    ref_stop_aa_pos = protein_ref.find('*')
-    is_ptc = (ref_stop_aa_pos == -1) or (ptc_aa_pos < ref_stop_aa_pos)
-
-    if not is_ptc:
-        return {"result": "NMD_not_applicable", "reason": "Not a premature termination codon (PTC)."}
-
-    # Calculate the 1-based cDNA position of the PTC.
+    # Convert protein position (0-based) to cDNA position (1-based).
+    # The start of the codon is at protein_pos * 3.
+    # The position of the stop codon is relative to the CDS start.
     if config.cds_start_c is None:
-        return {"result": "unknown", "reason": "CDS start position not defined in config."}
-    ptc_cdna_pos_1based = config.cds_start_c + (ptc_aa_pos * 3)
+        return NMDOutcome(status="not_applicable", rationale="CDS start is not defined.")
 
-    # Exception 2: PTC is in the last exon.
-    if ptc_cdna_pos_1based > last_junction_pos_c:
-        return {
-            "result": "NMD_escaped",
-            "reason": "PTC is located in the last exon.",
-            "ptc_position": ptc_cdna_pos_1based,
-            "last_junction_position": last_junction_pos_c,
-        }
+    cds_start_idx = config.cds_start_c - 1
+    ptc_cds_pos = ptc_protein_pos * 3
+    ptc_cdna_pos = cds_start_idx + ptc_cds_pos + 1 # +1 for 1-based coordinate
 
-    # Main NMD rule: Check distance from PTC to the last junction.
-    distance = last_junction_pos_c - ptc_cdna_pos_1based
+    # 4. Calculate the position of the last exon-exon junction in cDNA coordinates.
+    # The junction position is the length of all exons except the last one.
+    exon_lengths = [(end - start + 1) for start, end in config.exons]
+    last_junction_cdna_pos = sum(exon_lengths[:-1])
 
-    if distance >= nmd_threshold:
-        return {
-            "result": "NMD_likely",
-            "reason": f"PTC is {distance} nt upstream of the final exon-exon junction (>= {nmd_threshold} nt).",
-            "ptc_position": ptc_cdna_pos_1based,
-            "last_junction_position": last_junction_pos_c,
-            "distance": distance,
-        }
+    # 5. Apply the NMD rule.
+    # The rule applies if the PTC is *upstream* of the junction.
+    if ptc_cdna_pos > last_junction_cdna_pos:
+        # PTC is in the last exon
+        status = "escape"
+        rationale = (f"PTC at c.{ptc_cdna_pos} is located in the last exon, "
+                     f"downstream of the final exon-exon junction at c.{last_junction_cdna_pos}.")
     else:
-        return {
-            "result": "NMD_escaped",
-            "reason": f"PTC is {distance} nt upstream of the final exon-exon junction (< {nmd_threshold} nt).",
-            "ptc_position": ptc_cdna_pos_1based,
-            "last_junction_position": last_junction_pos_c,
-            "distance": distance,
-        }
+        distance_to_last_junction = last_junction_cdna_pos - ptc_cdna_pos
+        if distance_to_last_junction >= NMD_RULE_DISTANCE_NT:
+            status = "likely"
+            rationale = (f"PTC at c.{ptc_cdna_pos} is {distance_to_last_junction} nt "
+                         f"upstream of the last exon-exon junction (at c.{last_junction_cdna_pos}), "
+                         f"which is >= {NMD_RULE_DISTANCE_NT} nt.")
+        else:
+            status = "escape"
+            rationale = (f"PTC at c.{ptc_cdna_pos} is {distance_to_last_junction} nt "
+                         f"upstream of the last exon-exon junction (at c.{last_junction_cdna_pos}), "
+                         f"which is < {NMD_RULE_DISTANCE_NT} nt.")
+
+    return NMDOutcome(status=status, rationale=rationale)
