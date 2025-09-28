@@ -20,6 +20,7 @@ def apply_variants(
     annotate_splicing: bool = False,
     annotate_nmd: bool = False,
     spliceai_params: Optional[Dict[str, Any]] = None,
+    nmd_params: Optional[Dict[str, Any]] = None,
 ) -> SequenceBundle:
     """
     The main entry point for applying a list of HGVS variants to a transcript.
@@ -125,7 +126,9 @@ def apply_variants(
                 hap_ann["splicing"] = hap_splicing_ann
 
             if annotate_nmd:
-                hap_ann["nmd"] = check_nmd(edited_cdna, protein_ref, cfg)
+                hap_ann["nmd"] = check_nmd(
+                    edited_cdna, protein_ref, cfg, **(nmd_params or {})
+                )
 
         protein_edited_list.append(prot_edited)
         annotations["haplotypes"].append(hap_ann)
