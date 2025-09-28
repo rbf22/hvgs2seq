@@ -1,7 +1,8 @@
 import pytest
 from hgvs2seq.parse import VariantNorm
+from hgvs2seq.models import EditPlan
 from hgvs2seq.apply.single import apply_single_variant
-from hgvs2seq.apply.batch import apply_batch
+from hgvs2seq.apply.batch import apply_edit_plan
 
 # A sample reference sequence for testing: ATG GCC TCA TGA TAG CAT CAT CAT CAT C
 REF_SEQ = "ATGGCCTCATGATAGCATCATCATCATC"
@@ -68,31 +69,40 @@ def test_apply_dup(ref_seq: str):
     assert result_seq == expected_seq
 
 # =============================================================================
-# Tests for apply_batch
+# Tests for apply_edit_plan (Updated from apply_batch)
 # =============================================================================
 
-def test_apply_batch_non_overlapping(ref_seq: str):
-    """Test applying a batch of non-overlapping variants."""
+def test_apply_edit_plan_non_overlapping(ref_seq: str):
+    """Test applying a batch of non-overlapping variants using an EditPlan."""
     variants = [
-        VariantNorm(hgvs_c="c.4_6del", kind="del", c_start=4, c_end=6, alt=None, meta={}),      # Deletes GCC
-        VariantNorm(hgvs_c="c.10_11insA", kind="ins", c_start=10, c_end=11, alt="A", meta={}) # Inserts A between T and G
+        VariantNorm(hgvs_c="c.4_6del", kind="del", c_start=4, c_end=6, alt=None, meta={}),
+        VariantNorm(hgvs_c="c.10_11insA", kind="ins", c_start=10, c_end=11, alt="A", meta={})
     ]
-    # Starting sequence: ATGGCCTCATGATAGCATCATCATCATC
-    # 1. Apply c.10_11insA: ATGGCCTCAT-A-GATAGCAT...
-    # 2. Apply c.4_6del on the new sequence: ATG-TCAT-A-GATAGCAT...
-    expected_seq = "ATGTCATAGATAGCATCATCATCATC"
-    result_seq = apply_batch(ref_seq, variants)
-    assert result_seq == expected_seq
+    plan = EditPlan(haplotypes=[variants], policy="order_by_pos", warnings=[])
 
-def test_apply_batch_order_independence(ref_seq: str):
-    """Test that the order of variants in the input list doesn't matter."""
+    # The function applies variants in reverse order of start position.
+    # 1. Apply c.10_11insA: ATGGCCTCAT -> ATGGCCTCATA...
+    #    Result: "ATGGCCTCATAGATAGCATCATCATCATC"
+    # 2. Apply c.4_6del to the new sequence: ATG-GCC-TCA... -> ATG-TCA...
+    #    Result: "ATGTCATAGATAGCATCATCATCATC"
+    expected_seq = "ATGTCATAGATAGCATCATCATCATC"
+
+    result_seqs = apply_edit_plan(ref_seq, plan)
+    assert len(result_seqs) == 1
+    assert result_seqs[0] == expected_seq
+
+def test_apply_edit_plan_order_independence(ref_seq: str):
+    """Test that the order of variants in the input list doesn't matter for EditPlan."""
     variants_shuffled = [
         VariantNorm(hgvs_c="c.10_11insA", kind="ins", c_start=10, c_end=11, alt="A", meta={}),
         VariantNorm(hgvs_c="c.4_6del", kind="del", c_start=4, c_end=6, alt=None, meta={})
     ]
+    plan = EditPlan(haplotypes=[variants_shuffled], policy="order_by_pos", warnings=[])
     expected_seq = "ATGTCATAGATAGCATCATCATCATC"
-    result_seq = apply_batch(ref_seq, variants_shuffled)
-    assert result_seq == expected_seq
+
+    result_seqs = apply_edit_plan(ref_seq, plan)
+    assert len(result_seqs) == 1
+    assert result_seqs[0] == expected_seq
 
 def test_out_of_bounds_error(ref_seq: str):
     """Test that a variant outside the sequence bounds raises an error."""
