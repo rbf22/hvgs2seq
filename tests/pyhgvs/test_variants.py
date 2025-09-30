@@ -71,7 +71,7 @@ class TestVariant(TestCase):
         """
         genome = MockGenomeTestFile(
             db_filename='hg19.fa',
-            filename='pyhgvs/tests/data/test_variants.genome',
+            filename='tests/pyhgvs/data/test_variants.genome',
             create_data=False)
 
         for variant, true_variant, justify in _normalize_tests:
@@ -89,7 +89,7 @@ class TestVariant(TestCase):
         """
         genome = MockGenomeTestFile(
             db_filename='hg19.fa',
-            filename='pyhgvs/tests/data/test_variants.2.genome',
+            filename='tests/pyhgvs/data/test_variants.2.genome',
             create_data=False)
 
         # Test SNP.

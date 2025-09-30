@@ -110,8 +110,8 @@ logs/
 *.csi
 *.bed
 *.bed.gz
-*.gtf
-*.gtf.gz
+data/*.gtf
+data/*.gtf.gz
 *.gff
 *.gff3
 *.fai
@@ -119,8 +119,8 @@ logs/
 *.fna.fai
 *.fasta.fai
 *.fna
-*.fa.gz
-*.fasta.gz
+data/*.fa.gz
+data/*.fasta.gz
 *.fna.gz
 
 # C extensions

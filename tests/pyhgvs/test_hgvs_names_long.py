@@ -14,11 +14,11 @@ def test_name_to_variant_long():
     """
     genome = MockGenomeTestFile(
         db_filename='hg19.fa',
-        filename='pyhgvs/tests/data/test_hgvs.genome',
+        filename='tests/pyhgvs/data/test_hgvs.genome',
         create_data=False)
 
     # Read transcripts.
-    with open('pyhgvs/data/genes.refGene', 'r') as infile:
+    with open('data/genes.refGene', 'r') as infile:
         transcripts = read_transcripts_refgene(infile)
 
     class NoTranscriptError(Exception):

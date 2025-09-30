@@ -101,7 +101,7 @@ def test_name_to_variant():
     """
     genome = MockGenomeTestFile(
         db_filename='hg19.fa',
-        filename='pyhgvs/tests/data/test_name_to_variant.genome',
+        filename='tests/pyhgvs/data/test_name_to_variant.genome',
         create_data=False)
 
     for hgvs_name, variant, name_canonical, var_canonical in _name_variants:
@@ -119,7 +119,7 @@ def test_variant_to_name():
     """
     genome = MockGenomeTestFile(
         db_filename='hg19.fa',
-        filename='pyhgvs/tests/data/test_variant_to_name.genome',
+        filename='tests/pyhgvs/data/test_variant_to_name.genome',
         create_data=False)
 
     for (expected_hgvs_name, variant,
@@ -143,7 +143,7 @@ def test_variant_to_name_counsyl():
     """
     genome = MockGenomeTestFile(
         db_filename='hg19.fa',
-        filename='pyhgvs/tests/data/test_variant_to_name_counsyl.genome',
+        filename='tests/pyhgvs/data/test_variant_to_name_counsyl.genome',
         create_data=False)
 
     for (expected_hgvs_name, variant,
