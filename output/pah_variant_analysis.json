@@ -1,0 +1,282 @@
+[
+  {
+    "variant1": "IVS4-5C>G",
+    "variant2": "IVS12+1G>A",
+    "nucleotide1": "c.442-5C>G",
+    "nucleotide2": "c.1315+1G>A",
+    "phenotype": {
+      "classic_pku": "0% (0)",
+      "mild_pku": "100% (1)",
+      "mhpa": "0% (0)",
+      "apv": 6.1,
+      "predicted_bh4_responsiveness": "not yet in place"
+    },
+    "severity": "Mild PKU"
+  },
+  {
+    "variant1": "IVS4-5C>G",
+    "variant2": "IVS4-5C>G",
+    "nucleotide1": "c.442-5C>G",
+    "nucleotide2": "c.442-5C>G",
+    "phenotype": {
+      "classic_pku": "0% (0)",
+      "mild_pku": "100% (1)",
+      "mhpa": "0% (0)",
+      "apv": 6.1,
+      "predicted_bh4_responsiveness": "not yet in place"
+    },
+    "severity": "Mild PKU"
+  },
+  {
+    "variant1": "p.A300S",
+    "variant2": "IVS11+1G>C",
+    "nucleotide1": "c.898G>T",
+    "nucleotide2": "c.1199+1G>C",
+    "phenotype": {
+      "classic_pku": "0% (0)",
+      "mild_pku": "0% (0)",
+      "mhpa": "100% (8)",
+      "apv": 9.7,
+      "predicted_bh4_responsiveness": "not yet in place"
+    },
+    "severity": "Mild HPA"
+  },
+  {
+    "variant1": "p.A300S",
+    "variant2": "IVS7+3G>C",
+    "nucleotide1": "c.898G>T",
+    "nucleotide2": "c.842+3G>C",
+    "phenotype": {
+      "classic_pku": "0% (0)",
+      "mild_pku": "50% (1)",
+      "mhpa": "50% (1)",
+      "apv": 9.7,
+      "predicted_bh4_responsiveness": "not yet in place"
+    },
+    "severity": "Mild HPA"
+  },
+  {
+    "variant1": "p.A403V",
+    "variant2": "Ex6del",
+    "nucleotide1": "c.1208C>T",
+    "nucleotide2": "c.510-?_706+?del",
+    "phenotype": {
+      "classic_pku": "0% (0)",
+      "mild_pku": "100% (1)",
+      "mhpa": "0% (0)",
+      "apv": 9.7,
+      "predicted_bh4_responsiveness": "not yet in place"
+    },
+    "severity": "Mild HPA"
+  },
+  {
+    "variant1": "p.A403V",
+    "variant2": "IVS4+4A>G",
+    "nucleotide1": "c.1208C>T",
+    "nucleotide2": "c.441+4A>G",
+    "phenotype": {
+      "classic_pku": "0% (0)",
+      "mild_pku": "0% (0)",
+      "mhpa": "100% (1)",
+      "apv": 9.7,
+      "predicted_bh4_responsiveness": "not yet in place"
+    },
+    "severity": "Mild HPA"
+  },
+  {
+    "variant1": "p.A403V",
+    "variant2": "IVS5+781del",
+    "nucleotide1": "c.1208C>T",
+    "nucleotide2": "c.442-102_509+781del",
+    "phenotype": {
+      "classic_pku": "0% (0)",
+      "mild_pku": "0% (0)",
+      "mhpa": "100% (2)",
+      "apv": 9.7,
+      "predicted_bh4_responsiveness": "not yet in place"
+    },
+    "severity": "Mild HPA"
+  },
+  {
+    "variant1": "p.A47V",
+    "variant2": "IVS10-11G>A",
+    "nucleotide1": "c.140C>T",
+    "nucleotide2": "c.1066-11G>A",
+    "phenotype": {
+      "classic_pku": "0% (0)",
+      "mild_pku": "0% (0)",
+      "mhpa": "100% (1)",
+      "apv": 10.0,
+      "predicted_bh4_responsiveness": "not yet in place"
+    },
+    "severity": "Mild HPA"
+  },
+  {
+    "variant1": "p.D129Y",
+    "variant2": "p.A447D",
+    "nucleotide1": "c.385G>T",
+    "nucleotide2": "c.1340C>A",
+    "phenotype": {
+      "classic_pku": "0% (0)",
+      "mild_pku": "100% (1)",
+      "mhpa": "0% (0)",
+      "apv": 5.0,
+      "predicted_bh4_responsiveness": "not yet in place"
+    },
+    "severity": "Mild PKU"
+  },
+  {
+    "variant1": "p.D296H",
+    "variant2": "IVS10-11G>A",
+    "nucleotide1": "c.886G>C",
+    "nucleotide2": "c.1066-11G>A",
+    "phenotype": {
+      "classic_pku": "0% (0)",
+      "mild_pku": "0% (0)",
+      "mhpa": "100% (1)",
+      "apv": 0.0,
+      "predicted_bh4_responsiveness": "not yet in place"
+    },
+    "severity": "Classic PKU"
+  },
+  {
+    "variant1": "p.D394H",
+    "variant2": "p.D394H",
+    "nucleotide1": "c.1180G>C",
+    "nucleotide2": "c.1180G>C",
+    "phenotype": {
+      "classic_pku": "0% (0)",
+      "mild_pku": "0% (0)",
+      "mhpa": "100% (1)",
+      "apv": 10.0,
+      "predicted_bh4_responsiveness": "not yet in place"
+    },
+    "severity": "Mild HPA"
+  },
+  {
+    "variant1": "p.D415N",
+    "variant2": "Ex3del",
+    "nucleotide1": "c.1243G>A",
+    "nucleotide2": "c.169-2_352+?del",
+    "phenotype": {
+      "classic_pku": "0% (0)",
+      "mild_pku": "0% (0)",
+      "mhpa": "100% (1)",
+      "apv": 10.0,
+      "predicted_bh4_responsiveness": "not yet in place"
+    },
+    "severity": "Mild HPA"
+  },
+  {
+    "variant1": "p.D59G",
+    "variant2": "IVS10-11G>A",
+    "nucleotide1": "c.176A>G",
+    "nucleotide2": "c.1066-11G>A",
+    "phenotype": {
+      "classic_pku": "0% (0)",
+      "mild_pku": "100% (1)",
+      "mhpa": "0% (0)",
+      "apv": 0.0,
+      "predicted_bh4_responsiveness": "not yet in place"
+    },
+    "severity": "Classic PKU"
+  },
+  {
+    "variant1": "p.E178G",
+    "variant2": "p.A403V",
+    "nucleotide1": "c.533A>G",
+    "nucleotide2": "c.1208C>T",
+    "phenotype": {
+      "classic_pku": "0% (0)",
+      "mild_pku": "0% (0)",
+      "mhpa": "100% (2)",
+      "apv": 9.7,
+      "predicted_bh4_responsiveness": "not yet in place"
+    },
+    "severity": "Mild HPA"
+  },
+  {
+    "variant1": "p.E178G",
+    "variant2": "p.E178G",
+    "nucleotide1": "c.533A>G",
+    "nucleotide2": "c.533A>G",
+    "phenotype": {
+      "classic_pku": "0% (0)",
+      "mild_pku": "66.67% (2)",
+      "mhpa": "33.33% (1)",
+      "apv": 7.4,
+      "predicted_bh4_responsiveness": "not yet in place"
+    },
+    "severity": "Mild HPA"
+  },
+  {
+    "variant1": "p.E221G",
+    "variant2": "p.E221G",
+    "nucleotide1": "c.662A>G",
+    "nucleotide2": "c.662A>G",
+    "phenotype": {
+      "classic_pku": "0% (0)",
+      "mild_pku": "0% (0)",
+      "mhpa": "100% (3)",
+      "apv": 10.0,
+      "predicted_bh4_responsiveness": "not yet in place"
+    },
+    "severity": "Mild HPA"
+  },
+  {
+    "variant1": "p.E390G",
+    "variant2": "Ex3del",
+    "nucleotide1": "c.1169A>G",
+    "nucleotide2": "c.169-2_352+?del",
+    "phenotype": {
+      "classic_pku": "0% (0)",
+      "mild_pku": "0% (0)",
+      "mhpa": "100% (1)",
+      "apv": 6.8,
+      "predicted_bh4_responsiveness": "not yet in place"
+    },
+    "severity": "Mild HPA"
+  },
+  {
+    "variant1": "p.E390G",
+    "variant2": "IVS10-2A>T",
+    "nucleotide1": "c.1169A>G",
+    "nucleotide2": "c.1066-2A>T",
+    "phenotype": {
+      "classic_pku": "0% (0)",
+      "mild_pku": "100% (2)",
+      "mhpa": "0% (0)",
+      "apv": 6.8,
+      "predicted_bh4_responsiveness": "not yet in place"
+    },
+    "severity": "Mild HPA"
+  },
+  {
+    "variant1": "p.E390G",
+    "variant2": "IVS2+5G>A",
+    "nucleotide1": "c.1169A>G",
+    "nucleotide2": "c.168+5G>A",
+    "phenotype": {
+      "classic_pku": "0% (0)",
+      "mild_pku": "100% (2)",
+      "mhpa": "0% (0)",
+      "apv": 6.8,
+      "predicted_bh4_responsiveness": "not yet in place"
+    },
+    "severity": "Mild HPA"
+  },
+  {
+    "variant1": "p.E390G",
+    "variant2": "IVS2-13T>G",
+    "nucleotide1": "c.1169A>G",
+    "nucleotide2": "c.169-13T>G",
+    "phenotype": {
+      "classic_pku": "0% (0)",
+      "mild_pku": "100% (1)",
+      "mhpa": "0% (0)",
+      "apv": 6.8,
+      "predicted_bh4_responsiveness": "not yet in place"
+    },
+    "severity": "Mild HPA"
+  }
+]

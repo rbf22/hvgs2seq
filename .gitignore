@@ -2,6 +2,128 @@
 __pycache__/
 *.py[codz]
 *$py.class
+*.pyo
+*.pyd
+.Python
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py.cover
+.hypothesis/
+.pytest_cache/
+coverage/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# mkdocs
+docs/_build/
+
+# VS Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# PyCharm
+.idea/
+*.iml
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Environment variables
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Poetry
+poetry.lock
+
+# Local development
+.local/
+
+# Project specific
+*.h5
+*.hdf5
+*.pkl
+*.pth
+*.pt
+*.bin
+*.index
+*.data-*
+
+# Logs
+logs/
+*.log
+
+# Data files
+*.bam
+*.bai
+*.bcf
+*.vcf
+*.vcf.gz
+*.tbi
+*.csi
+*.bed
+*.bed.gz
+*.gtf
+*.gtf.gz
+*.gff
+*.gff3
+*.fai
+*.fa.fai
+*.fna.fai
+*.fasta.fai
+*.fa
+*.fasta
+*.fna
+*.fa.gz
+*.fasta.gz
+*.fna.gz
 
 # C extensions
 *.so

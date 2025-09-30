@@ -21,43 +21,71 @@ def annotate_splicing_impact(
     Analyzes a single variant to see if it falls within a canonical splice region.
 
     Args:
-        variant: The VariantNorm object to analyze.
         config: The TranscriptConfig containing exon boundary information.
 
     Returns:
         A string describing the potential splice impact, or None if not applicable.
     """
+    # Get offsets from meta dictionary with default 0
+    c_start_offset = variant.meta.get('c_start_offset', 0)
+    c_end_offset = variant.meta.get('c_end_offset', 0)
+    
     # Splicing analysis is only relevant for variants with intronic offsets
-    if variant.c_start_offset == 0 and variant.c_end_offset == 0:
+    if c_start_offset == 0 and c_end_offset == 0:
+        print("No intronic offsets, returning None")
         return None
-
-    # Calculate the cDNA coordinates of exon boundaries
+    
+    # Calculate the end positions of each exon in cDNA coordinates
     exon_lengths = [(end - start + 1) for start, end in config.exons]
-    exon_end_positions_c = {sum(exon_lengths[:i+1]) for i in range(len(exon_lengths))}
+    
+    # Calculate the end positions of each exon in cDNA coordinates
+    exon_end_positions_c = []
+    cumulative_length = 0
+    for length in exon_lengths:
+        cumulative_length += length
+        exon_end_positions_c.append(cumulative_length)
+    exon_end_positions_c = set(exon_end_positions_c)
+    
     # The start of the first exon is 1. Subsequent starts are after the previous end.
     exon_start_positions_c = {1}
     cumulative_length = 0
     for length in exon_lengths[:-1]:
         cumulative_length += length
         exon_start_positions_c.add(cumulative_length + 1)
+    
+    print(f"Exon start positions (cDNA): {exon_start_positions_c}")
+    print(f"Exon end positions (cDNA): {exon_end_positions_c}")
+    print(f"Variant c_start: {variant.start}, in exon_ends: {variant.start in exon_end_positions_c}")
+    print(f"Variant c_start: {variant.start}, in exon_starts: {variant.start in exon_start_positions_c}")
+    print(f"Variant c_start_offset: {c_start_offset}")
 
     # Check for donor site variants (e.g., c.123+1G>A)
     # These occur after an exon ends.
-    if variant.c_start in exon_end_positions_c and variant.c_start_offset > 0:
-        if variant.c_start_offset in CANONICAL_DONOR_WINDOW:
-            return f"canonical_donor_site_variant (at c.{variant.c_start}+{variant.c_start_offset})"
+    if variant.start in exon_end_positions_c and c_start_offset > 0:
+        if c_start_offset in CANONICAL_DONOR_WINDOW:
+            result = f"canonical_donor_site_variant (at c.{variant.start}+{c_start_offset})"
+            print(f"Returning: {result}")
+            return result
         else:
-            return f"donor_region_variant (at c.{variant.c_start}+{variant.c_start_offset})"
+            result = f"donor_region_variant (at c.{variant.start}+{c_start_offset})"
+            print(f"Returning: {result}")
+            return result
 
     # Check for acceptor site variants (e.g., c.124-2A>G)
     # These occur before an exon starts.
-    if variant.c_start in exon_start_positions_c and variant.c_start_offset < 0:
-        if variant.c_start_offset in CANONICAL_ACCEPTOR_WINDOW:
-            return f"canonical_acceptor_site_variant (at c.{variant.c_start}{variant.c_start_offset})"
+    if variant.start in exon_start_positions_c and c_start_offset < 0:
+        if c_start_offset in CANONICAL_ACCEPTOR_WINDOW:
+            result = f"canonical_acceptor_site_variant (at c.{variant.start}{c_start_offset})"
+            print(f"Returning: {result}")
+            return result
         else:
-            return f"acceptor_region_variant (at c.{variant.c_start}{variant.c_start_offset})"
+            result = f"acceptor_region_variant (at c.{variant.start}{c_start_offset})"
+            print(f"Returning: {result}")
+            return result
 
-    return "intronic_variant"
+    result = "intronic_variant"
+    print(f"Returning: {result}")
+    return result
 
 
 def analyze_all_variants_for_splicing(

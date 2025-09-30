@@ -42,10 +42,10 @@ def check_nmd(
     # Convert protein position (0-based) to cDNA position (1-based).
     # The start of the codon is at protein_pos * 3.
     # The position of the stop codon is relative to the CDS start.
-    if config.cds_start_c is None:
+    if config.cds_start is None:
         return NMDOutcome(status="not_applicable", rationale="CDS start is not defined.")
 
-    cds_start_idx = config.cds_start_c - 1
+    cds_start_idx = config.cds_start - 1
     ptc_cds_pos = ptc_protein_pos * 3
     ptc_cdna_pos = cds_start_idx + ptc_cds_pos + 1 # +1 for 1-based coordinate
 

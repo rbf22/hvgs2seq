@@ -1,0 +1,21 @@
+variant1,variant2,nucleotide1,nucleotide2,phenotype,severity,severity
+IVS4-5C>G,IVS12+1G>A,c.442-5C>G,c.1315+1G>A,"{'classic_pku': '0% (0)', 'mild_pku': '100% (1)', 'mhpa': '0% (0)', 'apv': 6.1, 'predicted_bh4_responsiveness': 'not yet in place'}",Mild PKU,Mild PKU
+IVS4-5C>G,IVS4-5C>G,c.442-5C>G,c.442-5C>G,"{'classic_pku': '0% (0)', 'mild_pku': '100% (1)', 'mhpa': '0% (0)', 'apv': 6.1, 'predicted_bh4_responsiveness': 'not yet in place'}",Mild PKU,Mild PKU
+p.A300S,IVS11+1G>C,c.898G>T,c.1199+1G>C,"{'classic_pku': '0% (0)', 'mild_pku': '0% (0)', 'mhpa': '100% (8)', 'apv': 9.7, 'predicted_bh4_responsiveness': 'not yet in place'}",Mild HPA,Mild HPA
+p.A300S,IVS7+3G>C,c.898G>T,c.842+3G>C,"{'classic_pku': '0% (0)', 'mild_pku': '50% (1)', 'mhpa': '50% (1)', 'apv': 9.7, 'predicted_bh4_responsiveness': 'not yet in place'}",Mild HPA,Mild HPA
+p.A403V,Ex6del,c.1208C>T,c.510-?_706+?del,"{'classic_pku': '0% (0)', 'mild_pku': '100% (1)', 'mhpa': '0% (0)', 'apv': 9.7, 'predicted_bh4_responsiveness': 'not yet in place'}",Mild HPA,Mild HPA
+p.A403V,IVS4+4A>G,c.1208C>T,c.441+4A>G,"{'classic_pku': '0% (0)', 'mild_pku': '0% (0)', 'mhpa': '100% (1)', 'apv': 9.7, 'predicted_bh4_responsiveness': 'not yet in place'}",Mild HPA,Mild HPA
+p.A403V,IVS5+781del,c.1208C>T,c.442-102_509+781del,"{'classic_pku': '0% (0)', 'mild_pku': '0% (0)', 'mhpa': '100% (2)', 'apv': 9.7, 'predicted_bh4_responsiveness': 'not yet in place'}",Mild HPA,Mild HPA
+p.A47V,IVS10-11G>A,c.140C>T,c.1066-11G>A,"{'classic_pku': '0% (0)', 'mild_pku': '0% (0)', 'mhpa': '100% (1)', 'apv': 10.0, 'predicted_bh4_responsiveness': 'not yet in place'}",Mild HPA,Mild HPA
+p.D129Y,p.A447D,c.385G>T,c.1340C>A,"{'classic_pku': '0% (0)', 'mild_pku': '100% (1)', 'mhpa': '0% (0)', 'apv': 5.0, 'predicted_bh4_responsiveness': 'not yet in place'}",Mild PKU,Mild PKU
+p.D296H,IVS10-11G>A,c.886G>C,c.1066-11G>A,"{'classic_pku': '0% (0)', 'mild_pku': '0% (0)', 'mhpa': '100% (1)', 'apv': 0.0, 'predicted_bh4_responsiveness': 'not yet in place'}",Classic PKU,Classic PKU
+p.D394H,p.D394H,c.1180G>C,c.1180G>C,"{'classic_pku': '0% (0)', 'mild_pku': '0% (0)', 'mhpa': '100% (1)', 'apv': 10.0, 'predicted_bh4_responsiveness': 'not yet in place'}",Mild HPA,Mild HPA
+p.D415N,Ex3del,c.1243G>A,c.169-2_352+?del,"{'classic_pku': '0% (0)', 'mild_pku': '0% (0)', 'mhpa': '100% (1)', 'apv': 10.0, 'predicted_bh4_responsiveness': 'not yet in place'}",Mild HPA,Mild HPA
+p.D59G,IVS10-11G>A,c.176A>G,c.1066-11G>A,"{'classic_pku': '0% (0)', 'mild_pku': '100% (1)', 'mhpa': '0% (0)', 'apv': 0.0, 'predicted_bh4_responsiveness': 'not yet in place'}",Classic PKU,Classic PKU
+p.E178G,p.A403V,c.533A>G,c.1208C>T,"{'classic_pku': '0% (0)', 'mild_pku': '0% (0)', 'mhpa': '100% (2)', 'apv': 9.7, 'predicted_bh4_responsiveness': 'not yet in place'}",Mild HPA,Mild HPA
+p.E178G,p.E178G,c.533A>G,c.533A>G,"{'classic_pku': '0% (0)', 'mild_pku': '66.67% (2)', 'mhpa': '33.33% (1)', 'apv': 7.4, 'predicted_bh4_responsiveness': 'not yet in place'}",Mild HPA,Mild HPA
+p.E221G,p.E221G,c.662A>G,c.662A>G,"{'classic_pku': '0% (0)', 'mild_pku': '0% (0)', 'mhpa': '100% (3)', 'apv': 10.0, 'predicted_bh4_responsiveness': 'not yet in place'}",Mild HPA,Mild HPA
+p.E390G,Ex3del,c.1169A>G,c.169-2_352+?del,"{'classic_pku': '0% (0)', 'mild_pku': '0% (0)', 'mhpa': '100% (1)', 'apv': 6.8, 'predicted_bh4_responsiveness': 'not yet in place'}",Mild HPA,Mild HPA
+p.E390G,IVS10-2A>T,c.1169A>G,c.1066-2A>T,"{'classic_pku': '0% (0)', 'mild_pku': '100% (2)', 'mhpa': '0% (0)', 'apv': 6.8, 'predicted_bh4_responsiveness': 'not yet in place'}",Mild HPA,Mild HPA
+p.E390G,IVS2+5G>A,c.1169A>G,c.168+5G>A,"{'classic_pku': '0% (0)', 'mild_pku': '100% (2)', 'mhpa': '0% (0)', 'apv': 6.8, 'predicted_bh4_responsiveness': 'not yet in place'}",Mild HPA,Mild HPA
+p.E390G,IVS2-13T>G,c.1169A>G,c.169-13T>G,"{'classic_pku': '0% (0)', 'mild_pku': '100% (1)', 'mhpa': '0% (0)', 'apv': 6.8, 'predicted_bh4_responsiveness': 'not yet in place'}",Mild HPA,Mild HPA

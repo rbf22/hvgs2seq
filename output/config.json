@@ -1,0 +1,15 @@
+{
+  "transcript_id": "TEST_TRANSCRIPT",
+  "gene_symbol": "TEST_GENE",
+  "assembly": "GRCh38",
+  "strand": 1,
+  "chrom": "chr1",
+  "tx_start": 1001,
+  "tx_end": 1100,
+  "cds_start": 1001,
+  "cds_end": 1100,
+  "transcript_sequence": "ATGGTGAGCAAGGGCGAGGAGCTGTTCACCGGGGTGGTGCCCATCCTGGTCGAGCTGGACGGCGACGTAAACGGCCACAAGTTCAGCGTGTCCGGCGAGGGCGAGGGCGATGCCACCTACGGCAAGCTGACCCTGAAG",
+  "exons": [
+    [1001, 1100]
+  ]
+}

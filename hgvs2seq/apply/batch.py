@@ -53,7 +53,7 @@ def apply_variants_in_batch(
         # prevent earlier edits from invalidating the coordinates of later edits.
         sorted_variants = sorted(
             hap_variants,
-            key=lambda v: (v.c_start, v.c_end),
+            key=lambda v: (v.start, v.end),
             reverse=True
         )
 

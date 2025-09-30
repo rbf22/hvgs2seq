@@ -2,38 +2,37 @@
 Handles fetching of reference sequences for a given transcript.
 """
 import logging
-from .data_provider import get_sr
+from typing import List, Tuple, Optional
+
+from .data_provider import get_genome_sequence
 from .models import TranscriptConfig
 
 _logger = logging.getLogger(__name__)
 
 def get_reference_cDNA(transcript_id: str) -> str:
     """
-    Fetches the reference cDNA sequence for a given transcript ID.
+    Fetch the reference cDNA sequence for a given transcript ID.
 
     Args:
-        transcript_id: The ID of the transcript (e.g., "NM_000059.3").
+        transcript_id: The transcript ID (e.g., 'NM_000000.0')
 
     Returns:
         The cDNA sequence as a string.
 
     Raises:
-        KeyError: If the transcript ID is not found in SeqRepo.
+        KeyError: If the transcript ID is not found in the in-memory store.
     """
     _logger.info(f"Fetching reference cDNA for {transcript_id}")
     try:
-        # SeqRepo stores sequences as bytes, so we decode to string
-        sr = get_sr()
-        sequence = sr[transcript_id].decode('utf-8')
+        # Get the full transcript sequence from the in-memory store
+        # We use a large end position to get the full sequence
+        sequence = get_genome_sequence(transcript_id, 1, 1000000)
         _logger.info(f"Successfully fetched reference cDNA for {transcript_id}")
         return sequence
-    except KeyError:
-        _logger.error(f"Transcript ID '{transcript_id}' not found in SeqRepo.")
+    except ValueError as e:
+        _logger.error(f"Error fetching sequence for transcript '{transcript_id}': {e}")
         raise KeyError(f"Could not fetch reference sequence for '{transcript_id}'. "
-                       "Ensure the ID is correct and the sequence exists in your SeqRepo instance.")
-    except Exception as e:
-        _logger.error(f"An unexpected error occurred while fetching sequence for {transcript_id}: {e}")
-        raise
+                      "Ensure the ID is correct and the sequence exists in the in-memory store.")
 
 def build_cdna_from_exons(config: TranscriptConfig) -> str:
     """
@@ -47,7 +46,14 @@ def build_cdna_from_exons(config: TranscriptConfig) -> str:
 
     Returns:
         The constructed cDNA sequence as a string.
+        
+    Raises:
+        ValueError: If no exons are provided in the config.
     """
+    if not config.exons:
+        _logger.error("No exons provided in transcript configuration")
+        raise ValueError("No exons provided in transcript configuration")
+        
     _logger.info(f"Building cDNA for {config.transcript_id} from {len(config.exons)} exons.")
 
     # We need a genomic sequence accession for the assembly mapper
@@ -67,6 +73,6 @@ def build_cdna_from_exons(config: TranscriptConfig) -> str:
     #     full_sequence = str(Seq(full_sequence).reverse_complement())
 
     _logger.warning("build_cdna_from_exons is not fully implemented. "
-                    "Relying on get_reference_cDNA for now.")
+                   "Relying on get_reference_cDNA for now.")
 
     return get_reference_cDNA(config.transcript_id)

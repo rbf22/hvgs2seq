@@ -1,0 +1,20 @@
+[
+  {
+    "haplotype_id": 1,
+    "variants": [],
+    "edited_sequence": "ATGGTGAGCAAGGGCGAGGAGCTGTTCACCGGGGTGGTGCCCATCCTGGTCGAGCTGGACGGCGACGTAAACGGCCACAAGTTCAGCGTGTCCGGCGAGGGCGAGGGCGATGCCACCTACGGCAAGCTGACCCTGAAGTAATAA",
+    "protein_sequence": "MVSKGEELFTGVVPILVELDGDVNGHKFSVSGEGEGDATYGKLTLK",
+    "nmd_status": "not_applicable",
+    "nmd_rationale": "No premature termination codon found."
+  },
+  {
+    "haplotype_id": 2,
+    "variants": [
+      "TEST_TRANSCRIPT:c.15C>A"
+    ],
+    "edited_sequence": "ATGGTGAGCAAGGGAGAGGAGCTGTTCACCGGGGTGGTGCCCATCCTGGTCGAGCTGGACGGCGACGTAAACGGCCACAAGTTCAGCGTGTCCGGCGAGGGCGAGGGCGATGCCACCTACGGCAAGCTGACCCTGAAGTAATAA",
+    "protein_sequence": "MVSKGEELFTGVVPILVELDGDVNGHKFSVSGEGEGDATYGKLTLK",
+    "nmd_status": "not_applicable",
+    "nmd_rationale": "No premature termination codon found."
+  }
+]

@@ -1,0 +1,9 @@
+[
+  {
+    "haplotype_id": 0,
+    "edited_sequence": "ATGGAGAGCAAGGGCGAGGAGCTGTTCACCGGGGTGGTGCCCATCCTGGTCGAGCTGGACGGCGACGTAAACGGCCACAAGTTCAGCGTGTCCGGCGAGGGCGAGGGCGATGCCACCTACGGCAAGCTGACCCTGAAGTAATAA",
+    "protein_sequence": "MESKGEELFTGVVPILVELDGDVNGHKFSVSGEGEGDATYGKLTLK",
+    "nmd_status": "not_applicable",
+    "nmd_rationale": "No premature termination codon found."
+  }
+]

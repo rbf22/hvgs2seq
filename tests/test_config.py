@@ -26,8 +26,8 @@ def test_load_valid_config():
     assert config.assembly == raw_data["assembly"]
     assert config.strand == raw_data["strand"]
     assert config.exons == [tuple(e) for e in raw_data["exons"]]
-    assert config.cds_start_c == raw_data["cds_start_c"]
-    assert config.cds_end_c == raw_data["cds_end_c"]
+    assert config.cds_start == raw_data["cds_start"]
+    assert config.cds_end == raw_data["cds_end"]
 
 def test_load_nonexistent_config():
     """
