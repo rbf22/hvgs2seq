@@ -1,9 +1,9 @@
 from __future__ import unicode_literals
 
-from .. import parse_hgvs_name
-from ..utils import read_transcripts
-from ..variants import normalize_variant
-from .genome import MockGenomeTestFile
+from hgvs2seq.pyhgvs import parse_hgvs_name
+from hgvs2seq.pyhgvs.utils import read_transcripts_refgene
+from hgvs2seq.pyhgvs.variants import normalize_variant
+from tests.pyhgvs.genome import MockGenomeTestFile
 
 
 def test_name_to_variant_long():
@@ -19,7 +19,7 @@ def test_name_to_variant_long():
 
     # Read transcripts.
     with open('pyhgvs/data/genes.refGene', 'r') as infile:
-        transcripts = read_transcripts(infile)
+        transcripts = read_transcripts_refgene(infile)
 
     class NoTranscriptError(Exception):
         pass

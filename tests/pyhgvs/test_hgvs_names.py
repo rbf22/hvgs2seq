@@ -9,16 +9,18 @@ try:
 except ImportError:
     SequenceFileDB = None
 
-from .. import CDNACoord
-from .. import CDNA_STOP_CODON
-from .. import HGVSName
-from .. import InvalidHGVSName
-from .. import cdna_to_genomic_coord
-from .. import format_hgvs_name
-from .. import genomic_to_cdna_coord
-from .. import parse_hgvs_name
-from ..utils import read_transcripts
-from .genome import MockGenomeTestFile
+from hgvs2seq.pyhgvs import (
+    CDNACoord,
+    CDNA_STOP_CODON,
+    HGVSName,
+    InvalidHGVSName,
+    cdna_to_genomic_coord,
+    format_hgvs_name,
+    genomic_to_cdna_coord,
+    parse_hgvs_name
+)
+from hgvs2seq.pyhgvs.utils import read_transcripts_refgene
+from tests.pyhgvs.genome import MockGenomeTestFile
 
 
 def get_transcript(name):
@@ -789,4 +791,4 @@ _refgene = '\n'.join([
 
 
 # Mock transcripts.
-_transcripts = read_transcripts(StringIO(_refgene))
+_transcripts = read_transcripts_refgene(StringIO(_refgene))

@@ -68,9 +68,9 @@ def read_refgene(infile):
         }
 
 
-def make_transcript(transcript_json):
+def read_transcript_json(transcript_json):
     """
-    Make a Transcript form a JSON object.
+    Create a Transcript from a JSON object.
     """
 
     transcript_name = transcript_json['id']
@@ -110,21 +110,22 @@ def make_transcript(transcript_json):
 
     return transcript
 
-def read_transcripts(refgene_file):
+def read_transcripts_refgene(refgene_file):
     """
-    Read all transcripts in a RefGene file.
+    Read all transcripts from a refGene file.
     
     Args:
         refgene_file: A file-like object containing refGene data
         
     Returns:
-        set: A set of Transcript objects
+        dict: A dictionary mapping both transcript name and full name to Transcript objects
     """
-    transcripts = set()
+    transcripts = {}
     for transcript_data in read_refgene(refgene_file):
         # Create a Transcript object from the dictionary
-        transcript = make_transcript(transcript_data)
-        transcripts.add(transcript)
+        transcript = read_transcript_json(transcript_data)
+        transcripts[transcript.name] = transcript
+        transcripts[transcript.full_name] = transcript
     return transcripts
 
 
@@ -146,7 +147,7 @@ def read_transcripts_gtf(gtf_file):
         gtf_file: A file-like object containing GTF data
         
     Returns:
-        set: A set of Transcript objects
+        dict: A dictionary mapping both transcript name and full name to Transcript objects
     """
     # First pass: collect all exons for each transcript
     transcript_exons = defaultdict(list)
@@ -196,7 +197,7 @@ def read_transcripts_gtf(gtf_file):
             })
     
     # Second pass: create Transcript objects
-    transcripts = set()
+    transcripts = {}
     
     for tx_id, info in transcript_info.items():
         # Skip if we don't have any exons for this transcript
@@ -253,7 +254,9 @@ def read_transcripts_gtf(gtf_file):
                 exon_number=i
             )
             transcript.exons.append(exon)
-            
-        transcripts.add(transcript)
+        
+        # Add to transcripts dictionary with both name and full_name as keys
+        transcripts[transcript.name] = transcript
+        transcripts[transcript.full_name] = transcript
     
     return transcripts

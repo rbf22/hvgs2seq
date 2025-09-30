@@ -118,8 +118,6 @@ logs/
 *.fa.fai
 *.fna.fai
 *.fasta.fai
-*.fa
-*.fasta
 *.fna
 *.fa.gz
 *.fasta.gz

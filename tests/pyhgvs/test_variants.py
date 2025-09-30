@@ -3,8 +3,8 @@ from __future__ import unicode_literals
 
 from unittest import TestCase
 
-from ..variants import normalize_variant
-from .genome import MockGenomeTestFile
+from hgvs2seq.pyhgvs.variants import normalize_variant
+from tests.pyhgvs.genome import MockGenomeTestFile
 
 
 _genome_seq = dict([
