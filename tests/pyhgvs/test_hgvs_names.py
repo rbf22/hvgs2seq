@@ -168,7 +168,7 @@ def test_name_to_variant_refseqs():
     if not SequenceFileDB:
         print('skip test_name_to_variant_refseqs')
         return
-    genome = SequenceFileDB('pyhgvs/tests/data/test_refseqs.fa')
+    genome = SequenceFileDB('tests/pyhgvs/data/test_refseqs.fa')
 
     for hgvs_name, variant, name_canonical, var_canonical in _name_variants:
         if not var_canonical or 'NM_' not in hgvs_name:
@@ -189,7 +189,7 @@ def test_invalid_coordinates():
     if not SequenceFileDB:
         raise nose.SkipTest
 
-    genome = SequenceFileDB('pyhgvs/tests/data/test_refseqs.fa')
+    genome = SequenceFileDB('tests/pyhgvs/data/test_refseqs.fa')
     hgvs_name = 'NC_000005.10:g.177421339_177421327delACTCGAGTGCTCC'
     parse_hgvs_name(hgvs_name, genome, get_transcript=get_transcript)
 

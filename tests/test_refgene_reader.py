@@ -23,7 +23,8 @@ class TestRefGeneReader(unittest.TestCase):
         self.assertGreaterEqual(len(transcripts), 1)
         
         # Get the first transcript
-        tx = next(iter(transcripts))
+        tx_id = next(iter(transcripts))
+        tx = transcripts[tx_id]
         
         # Check basic properties
         self.assertEqual(tx.name, "NM_001346897")

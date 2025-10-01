@@ -27,7 +27,8 @@ chr1\tHAVANA\texon\t12613\t12721\t.\t+\t.\tgene_id "ENSG00000223972.5"; transcri
         self.assertGreaterEqual(len(transcripts), 1)
         
         # Get the first transcript
-        tx = next(iter(transcripts))
+        tx_id = next(iter(transcripts))
+        tx = transcripts[tx_id]
         
         # Check basic properties
         self.assertEqual(tx.name, "ENST00000456328")

@@ -2,7 +2,25 @@
 Handles CDS extraction, translation, and consequence analysis.
 """
 import logging
+from dataclasses import dataclass
+from typing import Optional, Tuple, List, Dict, Any
+
+@dataclass
+class ConsequenceCheckResult:
+    """Result of a consequence check."""
+    consequence: Optional[str] = None
+    hgvs_p: Optional[str] = None
+    protein_sequence: Optional[str] = None
+    details: Dict[str, Any] = None
+    
+    def is_positive(self) -> bool:
+        """Return True if this check found a consequence."""
+        return self.consequence is not None
+
 from ..models import TranscriptConfig, ProteinOutcome
+
+# Standard stop codons
+STOP_CODONS = {'TAA', 'TAG', 'TGA'}
 
 _logger = logging.getLogger(__name__)
 
@@ -23,34 +41,6 @@ GENETIC_CODE = {
     'TCA':'S', 'TCC':'S', 'TCG':'S', 'TCT':'S',
     'TTC':'F', 'TTT':'F', 'TTA':'L', 'TTG':'L',
     'TGC':'C', 'TGT':'C', 'TGA':'*', 'TGG':'W',
-}
-
-# Standard DNA codon table with N handling
-CODON_TABLE = {
-    # Standard codons (uppercase for consistency)
-    'TTT': 'F', 'TTC': 'F', 'TTA': 'L', 'TTG': 'L',
-    'TCT': 'S', 'TCC': 'S', 'TCA': 'S', 'TCG': 'S',
-    'TAT': 'Y', 'TAC': 'Y', 'TAA': '*', 'TAG': '*',
-    'TGT': 'C', 'TGC': 'C', 'TGA': '*', 'TGG': 'W',
-    'CTT': 'L', 'CTC': 'L', 'CTA': 'L', 'CTG': 'L',
-    'CCT': 'P', 'CCC': 'P', 'CCA': 'P', 'CCG': 'P',
-    'CAT': 'H', 'CAC': 'H', 'CAA': 'Q', 'CAG': 'Q',
-    'CGT': 'R', 'CGC': 'R', 'CGA': 'R', 'CGG': 'R',
-    'ATT': 'I', 'ATC': 'I', 'ATA': 'I', 'ATG': 'M',
-    'ACT': 'T', 'ACC': 'T', 'ACA': 'T', 'ACG': 'T',
-    'AAT': 'N', 'AAC': 'N', 'AAA': 'K', 'AAG': 'K',
-    'AGT': 'S', 'AGC': 'S', 'AGA': 'R', 'AGG': 'R',
-    'GTT': 'V', 'GTC': 'V', 'GTA': 'V', 'GTG': 'V',
-    'GCT': 'A', 'GCC': 'A', 'GCA': 'A', 'GCG': 'A',
-    'GAT': 'D', 'GAC': 'D', 'GAA': 'E', 'GAG': 'E',
-    'GGT': 'G', 'GGC': 'G', 'GGA': 'G', 'GGG': 'G',
-    
-    # Handle ambiguous bases (N) - also uppercase
-    'TNN': 'X', 'TCN': 'S', 'TAN': 'X', 'TGN': 'X',
-    'CTN': 'L', 'CCN': 'P', 'CAN': 'X', 'CGN': 'R',
-    'ATN': 'X', 'ACN': 'T', 'AAN': 'X', 'AGN': 'X',
-    'GTN': 'X', 'GCN': 'A', 'GAN': 'X', 'GGN': 'G',
-    'NTN': 'X', 'NCN': 'X', 'NAN': 'X', 'NGN': 'X'
 }
 
 def translate_sequence(seq: str, stop_symbol: str = '*') -> str:
@@ -82,93 +72,28 @@ def translate_sequence(seq: str, stop_symbol: str = '*') -> str:
     invalid_bases = set(seq) - valid_bases
     
     if invalid_bases:
-        _logger.warning(f"Sequence contains invalid characters: {invalid_bases}")
-        # Replace invalid characters with N
-        seq = ''.join(b if b in valid_bases else 'N' for b in seq)
-    
-    # Ensure sequence length is a multiple of 3
-    seq_len = len(seq)
-    if seq_len % 3 != 0:
-        _logger.warning(f"Sequence length ({seq_len}) is not a multiple of 3, truncating to {seq_len - (seq_len % 3)} bp")
-        seq = seq[:-(seq_len % 3)]
-        seq_len = len(seq)
-        if seq_len == 0:
-            _logger.error("Sequence is empty after truncation")
-            return ""
-    
-    _logger.debug(f"Using sequence length: {seq_len}")
-    
-    # Define a more comprehensive codon table that handles ambiguous bases
-    extended_codon_table = {
-        **CODON_TABLE,
-        # Handle ambiguous bases (N) in all positions
-        'TNN': 'X', 'TCN': 'S', 'TAN': 'X', 'TGN': 'X',
-        'CTN': 'L', 'CCN': 'P', 'CAN': 'X', 'CGN': 'R',
-        'ATN': 'X', 'ACN': 'T', 'AAN': 'X', 'AGN': 'X',
-        'GTN': 'X', 'GCN': 'A', 'GAN': 'X', 'GGN': 'G',
-        'NTN': 'X', 'NCN': 'X', 'NAN': 'X', 'NGN': 'X',
-        # Handle specific ambiguous codons
-        'NNN': 'X', 'NNA': 'X', 'NNC': 'X', 'NNG': 'X', 'NNT': 'X',
-        'NAN': 'X', 'NCN': 'X', 'NGN': 'X', 'NTN': 'X',
-        'ANN': 'X', 'CNN': 'X', 'GNN': 'X', 'TNN': 'X',
-    }
-    
-    # Log the first few codons for debugging
-    first_codons = [seq[i:i+3] for i in range(0, min(30, seq_len), 3)]
-    _logger.debug(f"First {len(first_codons)} codons: {first_codons}")
-    
-    # Log the translation table for the first few codons
-    _logger.debug("Codon to AA mapping for first few codons:")
-    for i in range(0, min(9, seq_len), 3):
-        codon = seq[i:i+3].upper()
-        if len(codon) == 3:
-            aa = CODON_TABLE.get(codon, 'X')
-            _logger.debug(f"  {codon} -> {aa} (standard)")
-            if aa == 'X':
-                # Try extended table
-                for pattern, aa_match in extended_codon_table.items():
-                    if all(p == 'N' or p == c for p, c in zip(pattern, codon)):
-                        _logger.debug(f"  {codon} -> {aa_match} (extended: {pattern})")
-                        break
-    
-    # Log the full sequence for debugging
-    _logger.debug(f"Full sequence to translate (first 100bp): {seq[:100]}")
-    _logger.debug(f"Sequence length: {len(seq)}")
+        _logger.warning(f"Invalid bases in sequence: {invalid_bases}")
     
     # Translate each codon
-    for i in range(0, seq_len, 3):
-        codon = seq[i:i+3].upper()
+    for i in range(0, len(seq) - 2, 3):
+        codon = seq[i:i+3]
         
-        # Check for incomplete codons (shouldn't happen due to earlier check)
+        # Handle incomplete codons at the end of the sequence
         if len(codon) < 3:
-            _logger.error(f"Incomplete codon at position {i}: '{codon}'")
-            protein.append('X')
-            continue
-            
-        # Check for ambiguous bases in the codon
-        if 'N' in codon:
-            _logger.debug(f"Ambiguous base in codon {i}-{i+2}: {codon}")
-            # Try to find the most specific match in the codon table
-            aa = extended_codon_table.get(codon, 'X')
-            protein.append(aa)
-            continue
-            
-        # Handle standard codons
-        aa = CODON_TABLE.get(codon, 'X')
+            _logger.warning(f"Incomplete codon at position {i}: {codon}")
+            break
         
-        if aa == 'X':
-            _logger.warning(f"Unknown or invalid codon '{codon}' at position {i}-{i+2}")
-            # Try to find a match with ambiguous bases
-            for pattern, aa_match in extended_codon_table.items():
-                if all(p == 'N' or p == c for p, c in zip(pattern, codon)):
-                    aa = aa_match
-                    _logger.debug(f"Matched ambiguous pattern '{pattern}': {codon} -> {aa}")
-                    break
+        # Look up the amino acid in the genetic code
+        aa = GENETIC_CODE.get(codon, 'X')
         
+        # Replace stop symbol if needed
+        if aa == '*' and stop_symbol != '*':
+            aa = stop_symbol
+            
         protein.append(aa)
         
         # Log the first few translations for debugging
-        if i < 9:  # First 3 codons
+        if i < 30:  # Log first 10 codons
             _logger.debug(f"Translated {codon} -> {aa}")
     
     protein_seq = ''.join(protein)
@@ -179,18 +104,463 @@ def translate_sequence(seq: str, stop_symbol: str = '*') -> str:
     
     return protein_seq
 
+def check_start_loss(
+    ref_cds: str,
+    edited_cds: str,
+    ref_protein: str,
+    edited_protein: str
+) -> ConsequenceCheckResult:
+    """Check for start codon loss."""
+    result = ConsequenceCheckResult()
+    
+    # Check for start codon loss (must be first check)
+    if ref_cds.startswith('ATG') and not edited_cds.startswith('ATG'):
+        result.consequence = "start_loss"
+        result.hgvs_p = "p.Met1?"
+        result.protein_sequence = edited_protein
+        
+    return result
+
+def check_in_frame_indels(
+    ref_cds: str,
+    edited_cds: str,
+    ref_protein: str,
+    edited_protein: str
+) -> ConsequenceCheckResult:
+    """Check for in-frame insertions and deletions."""
+    result = ConsequenceCheckResult()
+    is_indel = len(ref_cds) != len(edited_cds)
+    
+    # Only check for in-frame indels if the lengths differ by a multiple of 3
+    if not is_indel or (len(ref_cds) - len(edited_cds)) % 3 != 0:
+        return result
+    
+    # Find the position where the sequences first differ
+    diff_pos = 0
+    for i in range(min(len(ref_cds), len(edited_cds))):
+        if i >= len(ref_cds) or i >= len(edited_cds) or ref_cds[i] != edited_cds[i]:
+            diff_pos = i
+            break
+    
+    # Get the codon position (1-based)
+    aa_pos = diff_pos // 3 + 1
+    
+    # For in-frame deletions
+    if len(edited_cds) < len(ref_cds):
+        del_len = len(ref_cds) - len(edited_cds)
+        deleted_nt = ref_cds[diff_pos:diff_pos + del_len]
+        deleted_aa = translate_sequence(deleted_nt)
+        
+        result.consequence = "in_frame_indel"
+        result.hgvs_p = f"p.{deleted_aa[0] if deleted_aa else '?'}{aa_pos}del"
+        result.protein_sequence = edited_protein
+    
+    # For in-frame insertions
+    elif len(edited_cds) > len(ref_cds):
+        ins_pos = diff_pos
+        inserted_nt = edited_cds[ins_pos:ins_pos + (len(edited_cds) - len(ref_cds))]
+        inserted_aa = translate_sequence(inserted_nt)
+        
+        result.consequence = "in_frame_indel"
+        result.hgvs_p = f"p.{ref_protein[aa_pos-1] if aa_pos <= len(ref_protein) else '?'}{aa_pos}ins{inserted_aa}"
+        result.protein_sequence = edited_protein
+    
+    return result
+
+def check_frameshifts(
+    ref_cds: str,
+    edited_cds: str,
+    ref_protein: str,
+    edited_protein: str
+) -> ConsequenceCheckResult:
+    """Check for frameshift variants."""
+    _logger = logging.getLogger(__name__)
+    result = ConsequenceCheckResult()
+    
+    # Check if the CDS sequences are different lengths (indel)
+    is_indel = len(ref_cds) != len(edited_cds)
+    
+    # Calculate the length difference (positive for deletion, negative for insertion)
+    length_diff = len(ref_cds) - len(edited_cds)
+    
+    # This is a frameshift if:
+    # 1. It's an indel and the length difference is not a multiple of 3, or
+    # 2. The protein sequences have different lengths (excluding terminal stop codons)
+    ref_protein_trimmed = ref_protein.rstrip('*')
+    edited_protein_trimmed = edited_protein.rstrip('*')
+    
+    # Check if this might be a stop_lost variant (handled by check_stop_gain)
+    ref_has_stop = '*' in ref_protein or 'X' in ref_protein
+    edited_has_stop = '*' in edited_protein or 'X' in edited_protein
+    
+    # If it's an indel and not a multiple of 3, it's definitely a frameshift
+    if is_indel and abs(length_diff) % 3 != 0:
+        is_frameshift = True
+        _logger.debug(f"check_frameshifts: Detected frameshift due to indel with length_diff={length_diff} (not multiple of 3)")
+    else:
+        # Otherwise, check if the protein sequences differ in length or content
+        is_frameshift = (len(ref_protein_trimmed) != len(edited_protein_trimmed) or 
+                        any(r != e for r, e in zip(ref_protein, edited_protein)))
+        _logger.debug(f"check_frameshifts: Protein length check - ref: {len(ref_protein_trimmed)}, edited: {len(edited_protein_trimmed)}, is_frameshift: {is_frameshift}")
+    
+    _logger.debug(f"check_frameshifts: is_indel={is_indel}, length_diff={length_diff}, is_frameshift={is_frameshift}")
+    
+    # If not a frameshift, check if it's a substitution that introduces a premature stop
+    if not is_frameshift and not is_indel and len(ref_cds) == len(edited_cds):
+        # This is a substitution, not a frameshift
+        _logger.debug("check_frameshifts: Not a frameshift (substitution)")
+        return result
+    
+    # If it's an in-frame indel, it's not a frameshift
+    if is_indel and length_diff % 3 == 0 and len(ref_protein) == len(edited_protein):
+        _logger.debug("check_frameshifts: In-frame indel, not a frameshift")
+        return result
+        
+    _logger.debug("check_frameshifts: Detected frameshift")
+    _logger.debug(f"check_frameshifts: ref_cds: {ref_cds[:30]}...")
+    _logger.debug(f"check_frameshifts: edited_cds: {edited_cds[:30]}...")
+    _logger.debug(f"check_frameshifts: ref_protein: {ref_protein}")
+    _logger.debug(f"check_frameshifts: edited_protein: {edited_protein}")
+    
+    # This is a frameshift (insertion or deletion not divisible by 3)
+    ref_stop_pos = ref_protein.find('*') if '*' in ref_protein else len(ref_protein)
+    _logger.debug(f"check_frameshifts: Reference stop position: {ref_stop_pos}")
+    
+    # Find where the frameshift occurs in the protein sequence
+    fs_pos = 0
+    for i, (ref_aa, edit_aa) in enumerate(zip(ref_protein, edited_protein)):
+        if i >= len(edited_protein) or ref_aa != edit_aa:
+            fs_pos = i + 1  # 1-based position
+            break
+    
+    _logger.debug(f"check_frameshifts: Frameshift detected at position {fs_pos}")
+    
+    # Check for stop gain in the edited protein (both '*' and 'X' are stop codons)
+    has_stop = '*' in edited_protein or 'X' in edited_protein
+    
+    if has_stop:
+        # Find the first stop codon (either '*' or 'X')
+        stop_pos_star = edited_protein.find('*') if '*' in edited_protein else float('inf')
+        stop_pos_X = edited_protein.find('X') if 'X' in edited_protein else float('inf')
+        edited_stop_pos = min(stop_pos_star, stop_pos_X)
+        
+        _logger.debug(f"check_frameshifts: Edited stop at position {edited_stop_pos}, reference stop at {ref_stop_pos}, ref protein length: {len(ref_protein)}")
+        
+        # For frameshifts, any stop is considered a premature stop
+        if is_frameshift:
+            is_premature_stop = True
+        else:
+            # For non-frameshifts, use the standard criteria
+            is_premature_stop = (
+                (edited_stop_pos < ref_stop_pos) or 
+                (ref_stop_pos == len(ref_protein) and has_stop) or
+                (edited_stop_pos < len(ref_protein) - 1 and not ref_protein.endswith('*'))
+            )
+        
+        _logger.debug(f"check_frameshifts: is_premature_stop={is_premature_stop} (edited_stop_pos={edited_stop_pos}, ref_stop_pos={ref_stop_pos}, len(ref_protein)={len(ref_protein)})")
+        
+        if is_premature_stop:
+            _logger.debug(f"check_frameshifts: Found stop_gain at position {edited_stop_pos + 1} (frameshift at {fs_pos})")
+            
+            result.consequence = "stop_gain"
+            result.hgvs_p = f"p.{ref_protein[fs_pos-1] if fs_pos > 0 else '?'}{fs_pos}fs*{edited_stop_pos + 1}"
+            result.protein_sequence = edited_protein
+            return result
+    else:
+        _logger.debug("check_frameshifts: No stop codon found in edited protein")
+    
+    # If we get here, it's a regular frameshift without a premature stop
+    _logger.debug("check_frameshifts: No premature stop found, returning frameshift_variant")
+    result.consequence = "frameshift_variant"
+    result.hgvs_p = f"p.{ref_protein[fs_pos-1] if fs_pos > 0 else '?'}{fs_pos}fs"
+    result.protein_sequence = edited_protein
+    return result
+
+def check_stop_loss(
+    ref_cds: str,
+    edited_cds: str,
+    ref_protein: str,
+    edited_protein: str
+) -> ConsequenceCheckResult:
+    """Check for stop loss variants."""
+    result = ConsequenceCheckResult()
+    
+    # Check for stop loss (must be after stop gain check)
+    ref_has_stop = ref_cds[-3:] in STOP_CODONS if len(ref_cds) >= 3 else False
+    edited_has_stop = edited_cds[-3:] in STOP_CODONS if len(edited_cds) >= 3 else False
+    
+    if ref_has_stop and not edited_has_stop:
+        # Check if the sequences are the same except for the stop codon
+        if ref_cds[:-3] == edited_cds[:-3]:
+            result.consequence = "stop_loss"
+            ref_aa = translate_sequence(ref_cds[-3:])
+            result.hgvs_p = f"p.{ref_aa}{len(edited_protein)}?"
+            result.protein_sequence = edited_protein
+    
+    return result
+
+def check_stop_gain(
+    ref_cds: str,
+    edited_cds: str,
+    ref_protein: str,
+    edited_protein: str
+) -> ConsequenceCheckResult:
+    """Check for stop gains and stop losses from nucleotide changes."""
+    result = ConsequenceCheckResult()
+    _logger = logging.getLogger(__name__)
+    
+    # For stop gain/loss, we need to check both sequences
+    # First check for stop loss (reference has stop but edited doesn't)
+    ref_has_stop = '*' in ref_protein or 'X' in ref_protein
+    edited_has_stop = '*' in edited_protein or 'X' in edited_protein
+    
+    # Check if the reference has a stop codon that's changed to an amino acid in the edited sequence
+    if ref_has_stop:
+        # Find the position of the stop in the reference
+        ref_stop_pos_star = ref_protein.find('*') if '*' in ref_protein else float('inf')
+        ref_stop_pos_X = ref_protein.find('X') if 'X' in ref_protein else float('inf')
+        ref_stop_pos = min(ref_stop_pos_star, ref_stop_pos_X)
+        
+        # If we found a stop in the reference
+        if ref_stop_pos != float('inf'):
+            # Check if the edited sequence doesn't have a stop at the same position
+            if (ref_stop_pos >= len(edited_protein) or 
+                (edited_protein[ref_stop_pos] != '*' and 
+                 edited_protein[ref_stop_pos] != 'X')):
+                result.consequence = "stop_loss"
+                stop_pos = ref_stop_pos + 1  # 1-based position
+                new_aa = edited_protein[ref_stop_pos] if ref_stop_pos < len(edited_protein) else '?'
+                
+                # If the stop was at the end, use 'ext*' notation
+                if ref_stop_pos == len(ref_protein) - 1:
+                    result.hgvs_p = f"p.*{stop_pos}ext*"
+                else:
+                    result.hgvs_p = f"p.*{stop_pos}{new_aa}"
+                
+                result.protein_sequence = edited_protein
+                _logger.debug(f"check_stop_gain: Found stop_lost at position {stop_pos} (stop changed to {new_aa})")
+                return result
+    
+    # Find the first stop in the reference (either '*' or 'X')
+    ref_stop_pos_star = ref_protein.find('*') if '*' in ref_protein else float('inf')
+    ref_stop_pos_X = ref_protein.find('X') if 'X' in ref_protein else float('inf')
+    ref_stop_pos = min(ref_stop_pos_star, ref_stop_pos_X)
+    
+    # Check for stop loss: reference has a stop that's not in the edited sequence
+    # or the stop in the edited sequence is further downstream
+    if ref_has_stop:
+        if not edited_has_stop:
+            # This is a clear stop_lost variant
+            if ref_stop_pos != float('inf'):
+                result.consequence = "stop_lost"
+                # Use the position where the stop was lost (1-based)
+                stop_pos = ref_stop_pos + 1
+                # Get the new amino acid at that position if it exists
+                new_aa = edited_protein[ref_stop_pos] if ref_stop_pos < len(edited_protein) else '?'
+                # If the stop was at the end, use 'ext*' notation
+                if ref_stop_pos == len(ref_protein) - 1:
+                    result.hgvs_p = f"p.*{stop_pos}ext*"
+                else:
+                    result.hgvs_p = f"p.*{stop_pos}{new_aa}"
+                result.protein_sequence = edited_protein
+                _logger.debug(f"check_stop_gain: Found stop_lost at position {stop_pos} (stop removed)")
+                return result
+        else:
+            # Both have stops, check if the stop moved downstream
+            edited_stop_pos_star = edited_protein.find('*') if '*' in edited_protein else float('inf')
+            edited_stop_pos_X = edited_protein.find('X') if 'X' in edited_protein else float('inf')
+            edited_stop_pos = min(edited_stop_pos_star, edited_stop_pos_X)
+            
+            # If the stop moved downstream, it's a stop_lost variant
+            if edited_stop_pos > ref_stop_pos and ref_stop_pos != float('inf'):
+                result.consequence = "stop_lost"
+                stop_pos = ref_stop_pos + 1
+                new_aa = edited_protein[ref_stop_pos] if ref_stop_pos < len(edited_protein) else '?'
+                result.hgvs_p = f"p.*{stop_pos}{new_aa}"
+                result.protein_sequence = edited_protein
+                _logger.debug(f"check_stop_gain: Found stop_lost (moved stop) at position {stop_pos}")
+                return result
+    
+    # Also check for the case where the reference has a stop but the edited version has a different stop position
+    if ref_has_stop and edited_has_stop:
+        ref_stop_pos_star = ref_protein.find('*') if '*' in ref_protein else float('inf')
+        ref_stop_pos_X = ref_protein.find('X') if 'X' in ref_protein else float('inf')
+        ref_stop_pos = min(ref_stop_pos_star, ref_stop_pos_X)
+        
+        edited_stop_pos_star = edited_protein.find('*') if '*' in edited_protein else float('inf')
+        edited_stop_pos_X = edited_protein.find('X') if 'X' in edited_protein else float('inf')
+        edited_stop_pos = min(edited_stop_pos_star, edited_stop_pos_X)
+        
+        # If the stop moved to a later position, it's a stop_lost variant
+        if edited_stop_pos > ref_stop_pos and ref_stop_pos != float('inf'):
+            result.consequence = "stop_lost"
+            stop_pos = ref_stop_pos + 1
+            new_aa = edited_protein[ref_stop_pos] if ref_stop_pos < len(edited_protein) else '?'
+            result.hgvs_p = f"p.*{stop_pos}{new_aa}"
+            result.protein_sequence = edited_protein
+            _logger.debug(f"check_stop_gain: Found stop_lost (moved stop) at position {stop_pos}")
+            return result
+    
+    # Only check for stop gain if lengths are the same (substitution)
+    if len(ref_cds) != len(edited_cds):
+        _logger.debug("check_stop_gain: Lengths differ, not a simple substitution")
+        return result
+    
+    # Count the number of differences
+    diff_positions = [i for i, (ref_nt, edit_nt) in enumerate(zip(ref_cds, edited_cds)) 
+                     if ref_nt != edit_nt]
+    
+    _logger.debug(f"check_stop_gain: Found {len(diff_positions)} differences at positions {diff_positions}")
+    _logger.debug(f"check_stop_gain: ref_cds: {ref_cds[:30]}...")
+    _logger.debug(f"check_stop_gain: edited_cds: {edited_cds[:30]}...")
+    _logger.debug(f"check_stop_gain: ref_protein: {ref_protein}")
+    _logger.debug(f"check_stop_gain: edited_protein: {edited_protein}")
+    
+    # Find the first position where the proteins differ
+    first_diff_pos = None
+    for i, (ref_aa, edit_aa) in enumerate(zip(ref_protein, edited_protein)):
+        if ref_aa != edit_aa:
+            first_diff_pos = i
+            break
+    
+    if first_diff_pos is None:
+        _logger.debug("check_stop_gain: No differences in protein sequence")
+        return result
+    
+    # Check if the edited protein has a stop codon at the first difference position
+    if first_diff_pos is not None and edited_protein[first_diff_pos] == '*':
+        # It's a stop gain if the reference doesn't have a stop at this position
+        if first_diff_pos >= len(ref_protein) or ref_protein[first_diff_pos] != '*':
+            _logger.debug(f"check_stop_gain: Found stop_gain at position {first_diff_pos + 1}")
+            
+            # Get the reference amino acid at this position
+            ref_aa = ref_protein[first_diff_pos] if first_diff_pos < len(ref_protein) else '?'
+            
+            result.consequence = "stop_gain"
+            result.hgvs_p = f"p.{ref_aa}{first_diff_pos + 1}*"
+            result.protein_sequence = edited_protein
+    # Also check if the edited protein has a stop codon before the reference stop
+    elif '*' in edited_protein:
+        edited_stop_pos = edited_protein.find('*')
+        ref_stop_pos = ref_protein.find('*') if '*' in ref_protein else len(ref_protein)
+        
+        # It's a stop gain if the stop appears earlier in the edited protein
+        # and it's not just the natural stop being moved
+        is_premature_stop = (
+            (edited_stop_pos < ref_stop_pos) or 
+            (ref_stop_pos == -1 and '*' in edited_protein) or
+            (edited_stop_pos < len(ref_protein) - 1 and not ref_protein.endswith('*'))
+        )
+        
+        if is_premature_stop:
+            # Find the first difference that could have caused the stop
+            for pos in range(min(len(ref_protein), len(edited_protein))):
+                if ref_protein[pos] != edited_protein[pos]:
+                    result.consequence = "stop_gain"
+                    result.hgvs_p = f"p.{ref_protein[pos] if pos < len(ref_protein) else '?'}{pos + 1}*"
+                    result.protein_sequence = edited_protein
+                    break
+    
+    _logger.debug(f"check_stop_gain: Returning result: {result}")
+    return result
+
+def check_missense_synonymous(
+    ref_cds: str,
+    edited_cds: str,
+    ref_protein: str,
+    edited_protein: str
+) -> ConsequenceCheckResult:
+    """Check for missense and synonymous variants."""
+    result = ConsequenceCheckResult()
+    
+    # Only check for missense/synonymous if it's not an indel
+    if len(ref_cds) != len(edited_cds):
+        return result
+    
+    # Skip if there's a stop gain (handled by check_stop_gain)
+    if '*' in edited_protein:
+        return result
+    
+    # Find the first position where the proteins differ
+    for i, (ref_aa, edit_aa) in enumerate(zip(ref_protein, edited_protein)):
+        if i >= len(edited_protein):
+            break
+            
+        if ref_aa != edit_aa:
+            # Check if it's a stop codon change
+            if i == len(ref_protein) - 1 and ref_aa == '*' and edit_aa != '*':
+                # This is a stop loss, which we already checked for
+                continue
+            
+            # It's a missense variant
+            result.consequence = "missense_variant"
+            result.hgvs_p = f"p.{ref_aa}{i+1}{edit_aa}"
+            result.protein_sequence = edited_protein
+            return result
+    
+    # If we get here, it's a synonymous variant
+    if ref_protein == edited_protein:
+        result.consequence = "synonymous_variant"
+        result.hgvs_p = "p.="
+        result.protein_sequence = edited_protein
+    
+    return result
+
+def determine_consequence_priority(checks: List[ConsequenceCheckResult]) -> ConsequenceCheckResult:
+    """
+    Determine the highest priority consequence from a list of check results.
+    
+    The priority order is:
+    1. start_loss
+    2. stop_gain
+    3. frameshift_variant
+    4. stop_loss
+    5. in_frame_indel
+    6. missense_variant
+    7. synonymous_variant
+    """
+    CONSEQUENCE_PRIORITY = {
+        'start_loss': 1,
+        'stop_gain': 2,
+        'frameshift_variant': 3,
+        'stop_loss': 4,
+        'in_frame_indel': 5,
+        'missense_variant': 6,
+        'synonymous_variant': 7
+    }
+    
+    # Filter out negative results
+    positive_checks = [c for c in checks if c.is_positive()]
+    
+    if not positive_checks:
+        return ConsequenceCheckResult()
+    
+    # Return the highest priority consequence
+    return min(
+        positive_checks,
+        key=lambda x: CONSEQUENCE_PRIORITY.get(x.consequence, float('inf'))
+    )
+
 def analyze_consequences(
     ref_cdna: str,
     edited_cdna: str,
     config: TranscriptConfig
 ) -> ProteinOutcome:
     """
-    Analyzes the consequences of variants on the protein sequence with a clear priority.
+    Analyzes the consequences of variants on the protein sequence following standard VEP terminology.
+    
+    This function performs the following steps:
+    1. Extracts CDS from reference and edited sequences
+    2. Validates the CDS sequences
+    3. Translates both sequences to protein
+    4. Runs all consequence checks
+    5. Determines the highest priority consequence
+    6. Returns a ProteinOutcome with the result
     """
     _logger = logging.getLogger(__name__)
-    _logger.setLevel(logging.DEBUG)  # Ensure debug logging is enabled
+    _logger.setLevel(logging.DEBUG)
     
-    # Log input parameters with more details
+    # Log input parameters
     _logger.debug("=" * 80)
     _logger.debug("ANALYZE_CONSEQUENCES CALLED")
     _logger.debug("=" * 80)
@@ -200,32 +570,6 @@ def analyze_consequences(
     # Log first 100bp of each sequence
     _logger.debug(f"Reference cDNA (first 100bp): {ref_cdna[:100] if ref_cdna else 'None'}")
     _logger.debug(f"Edited cDNA (first 100bp): {edited_cdna[:100] if edited_cdna else 'None'}")
-    
-    # Log CDS configuration
-    _logger.debug("\nCDS Configuration:")
-    _logger.debug(f"- CDS start (1-based): {config.cds_start}")
-    _logger.debug(f"- CDS end (1-based): {config.cds_end}")
-    _logger.debug(f"- Strand: {getattr(config, 'strand', 'not specified')}")
-    _logger.debug(f"- Transcript ID: {getattr(config, 'transcript_id', 'not specified')}")
-    
-    # Log the first 10 codons of each sequence
-    def log_codons(seq: str, name: str):
-        if not seq:
-            _logger.warning(f"{name}: Empty sequence")
-            return
-            
-        codons = [seq[i:i+3] for i in range(0, min(30, len(seq)), 3)]
-        _logger.debug(f"{name} first {len(codons)} codons: {codons}")
-        
-        # Log translation of first 10 codons
-        _logger.debug(f"{name} first {len(codons)} codons translation:")
-        for i, codon in enumerate(codons):
-            if len(codon) == 3:
-                aa = CODON_TABLE.get(codon, 'X')
-                _logger.debug(f"  {i+1}: {codon} -> {aa}")
-    
-    log_codons(ref_cdna, "Reference cDNA")
-    log_codons(edited_cdna, "Edited cDNA")
     
     # Validate input sequences
     if not ref_cdna or not edited_cdna:
@@ -243,325 +587,116 @@ def analyze_consequences(
     if cds_start != config.cds_start or cds_end != config.cds_end:
         _logger.warning(f"Adjusted CDS coordinates from [{config.cds_start}-{config.cds_end}] to [{cds_start}-{cds_end}] to fit within sequence length {len(ref_cdna)}")
     
-    # Log CDS extraction with more details
-    _logger.debug("\n" + "="*50)
-    _logger.debug("CDS EXTRACTION")
-    _logger.debug("="*50)
-    _logger.debug(f"Reference sequence length: {len(ref_cdna)} bp")
-    _logger.debug(f"Edited sequence length: {len(edited_cdna)} bp")
-    _logger.debug(f"CDS region (1-based): {cds_start}-{cds_end} (length: {cds_end - cds_start + 1} bp)")
-    
-    # Log the first 50bp and last 50bp of the CDS regions
-    def log_sequence_segment(seq: str, name: str, start: int, end: int):
-        if not seq:
-            _logger.warning(f"{name}: Empty sequence")
-            return
-            
-        if start < 0 or end > len(seq):
-            _logger.warning(f"{name}: Invalid coordinates {start}-{end} for sequence of length {len(seq)}")
-            return
-            
-        segment = seq[start:end]
-        _logger.debug(f"{name} [{start}:{end}]: {segment}")
-        
-        # Log codon translation for this segment
-        codons = [segment[i:i+3] for i in range(0, len(segment), 3) if i+3 <= len(segment)]
-        _logger.debug(f"{name} first {min(5, len(codons))} codons in segment:")
-        for i, codon in enumerate(codons[:5]):
-            if len(codon) == 3:
-                aa = CODON_TABLE.get(codon, 'X')
-                _logger.debug(f"  {i+1}: {codon} -> {aa}")
-    
-    # Log the beginning and end of the CDS regions
-    log_sequence_segment(ref_cdna, "Reference", cds_start-1, min(cds_start+49, cds_end))
-    log_sequence_segment(edited_cdna, "Edited", cds_start-1, min(cds_start+49, cds_end))
-    
-    if cds_end - cds_start > 100:  # Only log end if sequence is long enough
-        log_sequence_segment(ref_cdna, "Reference", max(cds_start-1, cds_end-50), cds_end)
-        log_sequence_segment(edited_cdna, "Edited", max(cds_start-1, cds_end-50), cds_end)
-    
     # Extract CDS sequences (0-based, end-exclusive)
     ref_cds = ref_cdna[cds_start-1:cds_end]
     edited_cds = edited_cdna[cds_start-1:cds_end]
     
-    # Log the CDS sequences with positions
-    _logger.debug(f"Reference CDS (positions {cds_start}-{cds_end}): {ref_cds}")
-    _logger.debug(f"Edited CDS (positions {cds_start}-{cds_end}): {edited_cds}")
-    
+    # Log CDS information
     _logger.debug(f"Reference CDS length: {len(ref_cds)}")
     _logger.debug(f"Edited CDS length: {len(edited_cds)}")
     
-    # Log the first 100bp of each CDS for debugging
-    _logger.debug(f"Reference CDS (first 100bp): {ref_cds[:100]}")
-    _logger.debug(f"Reference CDS (last 100bp): {ref_cds[-100:] if len(ref_cds) > 100 else ref_cds}")
-    _logger.debug(f"Edited CDS (first 100bp): {edited_cds[:100]}")
-    _logger.debug(f"Edited CDS (last 100bp): {edited_cds[-100:] if len(edited_cds) > 100 else edited_cds}")
+    # Log CDS lengths for debugging
+    if len(ref_cds) % 3 != 0 or len(edited_cds) % 3 != 0:
+        _logger.warning(f"CDS lengths not multiples of 3 - ref: {len(ref_cds)}, edited: {len(edited_cds)}")
     
-    # Log the first few codons for debugging
-    def log_codons(seq, name, limit=10):
-        codons = [seq[i:i+3] for i in range(0, min(30, len(seq)), 3)]
-        _logger.debug(f"First {len(codons)} {name} codons: {codons}")
+    # For frameshift detection, we need to use the full CDS sequences
+    # even if they're not multiples of 3
+    is_frameshift = (len(ref_cds) - len(edited_cds)) % 3 != 0
     
-    log_codons(ref_cds, "reference")
-    log_codons(edited_cds, "edited")
-    
-    # Check for non-DNA characters
-    dna_bases = set('ACGTN')
-    ref_non_dna = set(ref_cds.upper()) - dna_bases
-    if ref_non_dna:
-        _logger.warning(f"Reference CDS contains non-DNA characters: {ref_non_dna}")
-    
-    edited_non_dna = set(edited_cds.upper()) - dna_bases
-    if edited_non_dna:
-        _logger.warning(f"Edited CDS contains non-DNA characters: {edited_non_dna}")
-    
-    # Ensure CDS length is a multiple of 3 and not empty
-    if not ref_cds or not edited_cds:
-        _logger.error("Empty CDS sequence after extraction")
-        return ProteinOutcome(protein_sequence=None, hgvs_p=None, consequence="no_valid_CDS")
-    
-    if len(ref_cds) % 3 != 0:
-        _logger.warning(f"Reference CDS length ({len(ref_cds)}) is not a multiple of 3, truncating...")
-        ref_cds = ref_cds[:-(len(ref_cds) % 3)]
-    
-    if len(edited_cds) % 3 != 0:
-        _logger.warning(f"Edited CDS length ({len(edited_cds)}) is not a multiple of 3, truncating...")
-        edited_cds = edited_cds[:-(len(edited_cds) % 3)]
-    
-    # Check again after truncation
-    if not ref_cds or not edited_cds:
-        _logger.error("Empty CDS sequence after truncation")
-        return ProteinOutcome(protein_sequence=None, hgvs_p=None, consequence="no_valid_CDS")
-    
-    _logger.debug(f"Final reference CDS length: {len(ref_cds)}")
-    _logger.debug(f"Final edited CDS length: {len(edited_cds)}")
-    _logger.debug(f"Reference CDS (first 30bp): {ref_cds[:30]}")
-    _logger.debug(f"Edited CDS (first 30bp): {edited_cds[:30]}")
-    
-    # Translate the sequences
-    ref_protein = translate_sequence(ref_cds)
-    edited_protein = translate_sequence(edited_cds)
-    
-    _logger.debug(f"Reference protein (first 30aa): {ref_protein[:30]}")
-    _logger.debug(f"Edited protein (first 30aa): {edited_protein[:30]}")
-    
-    # Determine the consequence
-    consequence = "synonymous_variant"
-    if ref_protein != edited_protein:
-        consequence = "missense_variant"
-        if '*' in edited_protein and edited_protein.index('*') < len(ref_protein):
-            consequence = "stop_gained"
-    
-    # Create HGVS protein notation if there's a change
-    hgvs_p = None
-    if ref_protein != edited_protein:
-        # Find the first position where the proteins differ
-        for i, (ref_aa, edit_aa) in enumerate(zip(ref_protein, edited_protein)):
-            if ref_aa != edit_aa:
-                hgvs_p = f"p.{ref_aa}{i+1}{edit_aa}"
-                break
-    
-    return ProteinOutcome(
-        protein_sequence=edited_protein,
-        hgvs_p=hgvs_p,
-        consequence=consequence
-    )
-
-    # Extract CDS sequences
-    ref_cds = ref_cdna[cds_start_idx:cds_end_idx]
-    
-    # For edited CDS, we need to handle the case where the variant changes the length
-    # of the CDS. We'll extract the edited CDS based on the reference CDS coordinates
-    # but adjust for any length changes.
-    edited_cds = edited_cdna[cds_start_idx:cds_end_idx + (len(edited_cdna) - len(ref_cdna))]
-    
-    print(f"Extracted ref_cds: {len(ref_cds)} bases")
-    print(f"Extracted edited_cds: {len(edited_cds)} bases")
-    
-    # If the edited CDS is shorter than the reference, it's a deletion
-    # If it's longer, it's an insertion
-    # If it's the same length but different, it's a substitution
-    if len(edited_cds) < len(ref_cds):
-        print(f"Deletion detected: {len(ref_cds) - len(edited_cds)} bases")
-    elif len(edited_cds) > len(ref_cds):
-        print(f"Insertion detected: {len(edited_cds) - len(ref_cds)} bases")
-    elif edited_cds != ref_cds:
-        print("Substitution detected")
-
-    # Priority 0: Start Loss
-    if ref_cds[:3] == 'ATG' and edited_cds[:3] != 'ATG':
-        return ProteinOutcome(protein_sequence=translate_sequence(edited_cds), hgvs_p="p.Met1?", consequence="start_loss")
-
-    ref_protein = translate_sequence(ref_cds)
-    edited_protein = translate_sequence(edited_cds)
-
-    ref_prot_before_stop = ref_protein.split('*', 1)[0]
-    edited_prot_before_stop = edited_protein.split('*', 1)[0]
-
-    # Default values
-    consequence = "unknown"
-    hgvs_p = "p.?"
-
-    # Check for sequence changes
-    is_indel = len(ref_cds) != len(edited_cds)
-    
-    # A frameshift is when the length change is not a multiple of 3
-    is_frameshift = False
-    is_inframe_indel = False
-    
-    if is_indel:
-        # If the length difference is not a multiple of 3, it's a frameshift
-        if (len(ref_cds) - len(edited_cds)) % 3 != 0:
-            is_frameshift = True
-            print(f"Frameshift detected: length change of {len(edited_cds) - len(ref_cds)} bases")
-        else:
-            # For in-frame indels, we need to check if the protein sequences are different
-            # beyond the insertion/deletion point
-            is_inframe_indel = True
-            print(f"In-frame indel detected: length change of {len(edited_cds) - len(ref_cds)} bases")
-    
-    print(f"Reference CDS length: {len(ref_cds)}")
-    print(f"Edited CDS length: {len(edited_cds)}")
-    print(f"Is indel: {is_indel}")
-    print(f"Is frameshift: {is_frameshift}")
-    print(f"Is in-frame indel: {is_inframe_indel}")
-    
-    # For test_frameshift_causes_stop_gain, we need to handle the case where a frameshift causes a stop gain
-    
-    # Debug: Print the variant type
-    if is_frameshift:
-        print(f"Variant type: Frameshift ({len(ref_cds)} -> {len(edited_cds)} bp)")
-        print(f"Variant type: In-frame indel ({len(ref_cds)} -> {len(edited_cds)} bp)")
+    # Create truncated versions for translation if needed
+    if not is_frameshift and (len(ref_cds) % 3 != 0 or len(edited_cds) % 3 != 0):
+        # For non-frameshift variants, we can truncate to a multiple of 3
+        truncated_ref_cds = ref_cds[:-(len(ref_cds) % 3)] if len(ref_cds) % 3 != 0 else ref_cds
+        truncated_edited_cds = edited_cds[:-(len(edited_cds) % 3)] if len(edited_cds) % 3 != 0 else edited_cds
+        
+        if not truncated_ref_cds or not truncated_edited_cds:
+            _logger.error("Empty CDS sequence after truncation")
+            return ProteinOutcome(protein_sequence=None, hgvs_p=None, consequence="no_valid_CDS")
+            
+        # Use truncated sequences for translation
+        ref_protein = translate_sequence(truncated_ref_cds)
+        edited_protein = translate_sequence(truncated_edited_cds)
     else:
-        print("Variant type: Substitution")
+        # For frameshifts, we need to use the full sequences
+        # even if they're not multiples of 3
+        ref_protein = translate_sequence(ref_cds)
+        edited_protein = translate_sequence(edited_cds)
     
-    # Translate the edited protein sequence to check for stop codons
+    _logger.debug(f"Reference protein: {ref_protein}")
+    _logger.debug(f"Edited protein:   {edited_protein}")
     
-    # Initialize stop codon detection variables
-    ref_has_stop = '*' in ref_protein
-    ref_stop_pos = ref_protein.find('*') if ref_has_stop else len(ref_protein)
-    has_stop_codon = '*' in edited_protein
-    edited_stop_pos = edited_protein.find('*') if has_stop_codon else -1
-    stop_gain = False
-    stop_loss = ref_protein.endswith('*') and not edited_protein.endswith('*')
+    # First, check for stop_gain/stop_loss as they are high-priority consequences
+    stop_gain_result = check_stop_gain(ref_cds, edited_cds, ref_protein, edited_protein)
+    _logger.debug(f"analyze_consequences: stop_gain_result = {stop_gain_result}")
+    if stop_gain_result.is_positive():
+        if stop_gain_result.consequence == 'stop_loss':
+            _logger.debug("analyze_consequences: Found stop_loss from check_stop_gain")
+            _logger.debug(f"analyze_consequences: stop_gain_result.consequence = {stop_gain_result.consequence}")
+            _logger.debug(f"analyze_consequences: stop_gain_result.hgvs_p = {stop_gain_result.hgvs_p}")
+            return ProteinOutcome(
+                protein_sequence=stop_gain_result.protein_sequence or edited_protein,
+                hgvs_p=stop_gain_result.hgvs_p or "p.=?",
+                consequence=stop_gain_result.consequence
+            )
+        elif stop_gain_result.consequence == 'stop_gain':
+            _logger.debug("analyze_consequences: Found stop_gain from check_stop_gain")
+            return ProteinOutcome(
+                protein_sequence=stop_gain_result.protein_sequence or edited_protein,
+                hgvs_p=stop_gain_result.hgvs_p or "p.=?",
+                consequence=stop_gain_result.consequence
+            )
+    else:
+        _logger.debug("analyze_consequences: No stop_gain or stop_loss found")
     
-    # For frameshifts, we need to be more careful about stop codon detection
-    if is_frameshift:
-        # If the frameshift changes the protein sequence (not a silent mutation)
-        if ref_protein != edited_protein:
-            # If there's no stop codon in the edited protein, we need to check if the
-            # frameshift would introduce a premature stop if we had more sequence
-            if not has_stop_codon:
-                # For testing purposes, we'll assume any non-silent frameshift introduces a stop
-                has_stop_codon = True
-                edited_stop_pos = len(edited_protein)  # Assume stop is at the end
-                stop_gain = True
-            else:
-                # If there is a stop codon, it's a stop-gain if it's before the reference stop
-                stop_gain = not ref_has_stop or (edited_stop_pos < ref_stop_pos)
+    # Check for frameshifts next
+    frameshift_result = check_frameshifts(ref_cds, edited_cds, ref_protein, edited_protein)
+    if frameshift_result.is_positive():
+        if frameshift_result.consequence == 'stop_gain':
+            _logger.debug("analyze_consequences: Found stop_gain from frameshift")
+            return ProteinOutcome(
+                protein_sequence=frameshift_result.protein_sequence or edited_protein,
+                hgvs_p=frameshift_result.hgvs_p or "p.=?",
+                consequence=frameshift_result.consequence
+            )
+        elif frameshift_result.consequence == 'frameshift_variant':
+            _logger.debug("analyze_consequences: Found frameshift_variant")
+            return ProteinOutcome(
+                protein_sequence=frameshift_result.protein_sequence or edited_protein,
+                hgvs_p=frameshift_result.hgvs_p or "p.=?",
+                consequence=frameshift_result.consequence
+            )
     
-    # Check for stop-gain in non-frameshift cases
-    if has_stop_codon and not is_frameshift:
-        if is_inframe_indel:
-            # For in-frame indels, only consider it a stop-gain if the stop appears significantly earlier than in the reference
-            # or if it's a new stop codon that wasn't in the reference
-            if ref_has_stop:
-                # If the stop is at the same position or just slightly shifted, it's not a stop-gain
-                stop_gain = edited_stop_pos < (ref_stop_pos - 1)  # Allow for 1 position shift due to in-frame indel
-            else:
-                stop_gain = True  # New stop codon in an otherwise non-stop sequence
-        else:
-            # For other variants, use the original stop-gain logic
-            stop_gain = not ref_has_stop or (edited_stop_pos < ref_stop_pos)
-    if is_frameshift and has_stop_codon and not stop_gain:
-        stop_gain = True
-        stop_loss = False
-    
-    # Debug: Print all relevant variables for consequence determination
-    print("\n=== Consequence Determination ===")
-    print(f"stop_gain: {stop_gain}")
-    print(f"is_frameshift: {is_frameshift}")
-    print(f"has_stop_codon: {has_stop_codon}")
-    print(f"ref_protein: {ref_protein}")
-    print(f"edited_protein: {edited_protein}")
-    print(f"ref_has_stop: {ref_has_stop}")
-    print(f"ref_stop_pos: {ref_stop_pos if ref_has_stop else 'N/A'}")
-    print(f"edited_stop_pos: {edited_stop_pos if has_stop_codon else 'N/A'}")
-    
-    # Priority 1: Stop-gain (most severe after start loss)
-    # This includes frameshifts that introduce a premature stop codon
-    if stop_gain or (is_frameshift and has_stop_codon):
-        print("\n=== STOP-GAIN DETECTED ===")
-        print(f"Stop-gain detected (frameshift: {is_frameshift}, has_stop: {has_stop_codon})")
-        print(f"Ref protein: {ref_protein}")
-        print(f"Edited protein: {edited_protein}")
-        consequence = "stop_gain"
-        # For frameshifts, we might not have a direct position mapping, so use '?' for the reference AA
-        if is_frameshift:
-            hgvs_p = f"p.{ref_protein[0] if ref_protein else '?'}1*"
-        else:
-            hgvs_p = f"p.{ref_protein[edited_stop_pos] if edited_stop_pos < len(ref_protein) else 'X'}{edited_stop_pos+1}*"
-    # Priority 2: Frameshift variant (only if not already classified as stop-gain)
-    elif is_frameshift:
-        print("\n=== FRAMESHIFT VARIANT DETECTED ===")
-        print(f"Ref protein: {ref_protein}")
-        print(f"Edited protein: {edited_protein}")
-        consequence = "frameshift_variant"
-        hgvs_p = f"p.{ref_protein[0] if ref_protein else '?'}1fs*"
-    # Priority 2: In-frame indel (before frameshift to handle test_in_frame_deletion)
-    elif is_inframe_indel and consequence == "unknown":
-        print(f"In-frame indel: {ref_prot_before_stop} -> {edited_prot_before_stop}")
-        print(f"Ref protein: {ref_protein}")
-        print(f"Edited protein: {edited_protein}")
-        consequence = "in_frame_indel"
-        hgvs_p = "p.?"
-    # Priority 3: Stop-loss (only if not a frameshift)
-    elif stop_loss and not is_frameshift:
-        print("Stop-loss detected")
-        print(f"Ref protein: {ref_protein}")
-        print(f"Edited protein: {edited_protein}")
-        consequence = "stop_loss"
-        hgvs_p = f"p.*{len(ref_prot_before_stop)+1}ext"
-    # Priority 4: Frameshift
-    elif is_frameshift and consequence == "unknown":
-        print("Frameshift variant")
-        print(f"Ref protein: {ref_protein}")
-        print(f"Edited protein: {edited_protein}")
-        consequence = "frameshift_variant"
-        hgvs_p = "p.?"
-    
-    # If we haven't determined a consequence yet, check other types
-    if consequence == "unknown":
-        if ref_protein.endswith('*') and not edited_protein.endswith('*'):
-            print("Stop-loss detected")
-            print(f"Ref protein: {ref_protein}")
-            print(f"Edited protein: {edited_protein}")
-            consequence = "stop_loss"
-            hgvs_p = f"p.*{len(ref_prot_before_stop)+1}ext"
+    # Run other consequence checks in priority order, using the full CDS sequences
+    checks = [
+        # Check for start codon loss (highest priority)
+        check_start_loss(ref_cds, edited_cds, ref_protein, edited_protein),
         
-        # Priority 5: Missense (single amino acid change)
-        elif ref_prot_before_stop != edited_prot_before_stop:
-            consequence = "missense_variant"
-            for i, (ref_aa, edit_aa) in enumerate(zip(ref_prot_before_stop, edited_prot_before_stop)):
-                if ref_aa != edit_aa:
-                    hgvs_p = f"p.{ref_aa}{i+1}{edit_aa}"
-                    break
+        # We already checked stop_gain/stop_loss above, so we can skip it here
         
-        # Priority 6: Synonymous or no change
-        elif ref_prot_before_stop == edited_prot_before_stop:
-            if ref_cds != edited_cds:
-                consequence = "synonymous_variant"
-                hgvs_p = "p.="
-            else:
-                consequence = "no_change"
-                hgvs_p = "p.="
-
-    final_protein_seq = edited_prot_before_stop
-    if '*' in edited_protein:
-        final_protein_seq += '*'
-
+        # Check for in-frame indels
+        check_in_frame_indels(ref_cds, edited_cds, ref_protein, edited_protein),
+        
+        # Check for stop loss
+        check_stop_loss(ref_cds, edited_cds, ref_protein, edited_protein),
+        
+        # Check for missense and synonymous variants (lowest priority)
+        check_missense_synonymous(ref_cds, edited_cds, ref_protein, edited_protein)
+    ]
+    
+    # Determine the highest priority consequence
+    result = determine_consequence_priority(checks)
+    
+    # If no consequence was found, return a default outcome
+    if not result.is_positive():
+        return ProteinOutcome(
+            protein_sequence=edited_protein,
+            hgvs_p="p.=?",
+            consequence="no_sequence_alteration"
+        )
+    
+    # Return the highest priority consequence
     return ProteinOutcome(
-        protein_sequence=final_protein_seq,
-        hgvs_p=hgvs_p,
-        consequence=consequence
+        protein_sequence=result.protein_sequence or edited_protein,
+        hgvs_p=result.hgvs_p or "p.=?",
+        consequence=result.consequence
     )
